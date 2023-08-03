@@ -27,12 +27,12 @@ fn repl() {
             panic!("Error reading input line: {}", e);
         }
 
-        interpret(buffer);
+//        interpret(buffer);
     }
 }
 
 fn run_file(path: String) {
-    let src = match std::fs::read_to_string(path) {
+    let src = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(e) => panic!("Error reading source file at: {}, error: {}", path, e),
     };
