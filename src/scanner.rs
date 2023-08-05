@@ -1,7 +1,7 @@
 use std::{str::Chars, iter::Peekable};
 
 /// Identifiers and strings store a &str of the source string, hence the lifetime.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     // single-char tokens
     LParen     { line: u64 },

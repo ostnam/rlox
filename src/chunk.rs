@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoxVal {
     Num(f64),
     Str(String),
@@ -24,6 +24,7 @@ impl Display for LoxVal {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum OpCode {
     Add,
     Constant(LoxVal),
@@ -34,6 +35,7 @@ pub enum OpCode {
     Substract,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Instruction {
     pub op: OpCode,
     pub line: u64,
@@ -54,6 +56,7 @@ impl Display for OpCode {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Chunk (pub Vec<Instruction>);
 
 impl Chunk {
