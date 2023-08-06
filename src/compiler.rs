@@ -70,6 +70,24 @@ impl From<&Token> for PrecedenceLvl {
     }
 }
 
+impl PrecedenceLvl {
+    fn next(&self) -> PrecedenceLvl {
+        match self {
+            PrecedenceLvl::Null => PrecedenceLvl::Assignment,
+            PrecedenceLvl::Assignment => PrecedenceLvl::Or,
+            PrecedenceLvl::Or => PrecedenceLvl::And,
+            PrecedenceLvl::And => PrecedenceLvl::Equality,
+            PrecedenceLvl::Equality => PrecedenceLvl::Comparison,
+            PrecedenceLvl::Comparison => PrecedenceLvl::Term,
+            PrecedenceLvl::Term => PrecedenceLvl::Factor,
+            PrecedenceLvl::Factor => PrecedenceLvl::Unary,
+            PrecedenceLvl::Unary => PrecedenceLvl::Call,
+            PrecedenceLvl::Call => PrecedenceLvl::Primary,
+            PrecedenceLvl::Primary => PrecedenceLvl::Primary,
+        }
+    }
+}
+
 enum CompilationError {
     TokensLeft,
     UnclosedParens {
@@ -249,8 +267,7 @@ impl<'a> Compiler<'a> {
             Some(a) => a.clone(),
             None => return,
         };
-        self.parse_precedence(PrecedenceLvl::from(&previous));
-        // parsePrecedence((Precedence)(rule->precedence + 1));
+        self.parse_precedence(PrecedenceLvl::from(&previous).next());
 
         match previous {
             Token::Plus { line } => 
@@ -398,9 +415,24 @@ mod tests {
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
+                Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(30.0)), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
-                Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Return, line: 0 },
+            ])
+        )
+    }
+
+    #[test]
+    fn compile_sub() {
+        assert_eq!(
+            run_compiler("10 - 20 - 30"),
+            Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
+                Instruction { op: OpCode::Substract, line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(30.0)), line: 1 },
+                Instruction { op: OpCode::Substract, line: 1 },
                 Instruction { op: OpCode::Return, line: 0 },
             ])
         )
@@ -415,8 +447,8 @@ mod tests {
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(3.0)), line: 1 },
                 Instruction { op: OpCode::Multiply, line: 1 },
-                Instruction { op: OpCode::Constant(LoxVal::Num(4.0)), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(4.0)), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Return, line: 0 },
             ])
