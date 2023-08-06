@@ -1,4 +1,4 @@
-use rlox::chunk::LoxVal;
+use rlox::{chunk::LoxVal, vm::VMError};
 
 mod common;
 
@@ -100,4 +100,141 @@ fn test_mixed_arithmetic() {
         common::run_program("(10 + 30 * --20 / 100 + 4 - -20) / (2 + 8)"),
         Ok(LoxVal::Num(4.0)),
     );
+}
+
+#[test]
+fn test_not() {
+    assert_eq!(
+        common::run_program("!true"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("!false"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("!nil"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("!10"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("!0"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("!-1"),
+        Ok(LoxVal::Bool(false)),
+    );
+}
+
+// < <= >= >
+#[test]
+fn test_cmp() {
+    assert_eq!(
+        common::run_program("1 == 1"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 == 2"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1.0 == 1"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 == nil"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 == true"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 == false"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("true == true"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("false == false"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("nil == nil"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 != 1"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 != 2"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1.0 != 1"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 != nil"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 != true"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 != false"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("true != true"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("false != false"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("nil != nil"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 > 2"),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program("1 < 2"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 <= 1"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program("1 >= 1"),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert!(matches!(
+        common::run_program("1 >= true"),
+        Err(VMError::TypeError { .. }),
+    ));
+    assert!(matches!(
+        common::run_program("1 < nil"),
+        Err(VMError::TypeError { .. }),
+    ));
+    assert!(matches!(
+        common::run_program("true < nil"),
+        Err(VMError::TypeError { .. }),
+    ));
+    assert!(matches!(
+        common::run_program("true > false"),
+        Err(VMError::TypeError { .. }),
+    ));
 }

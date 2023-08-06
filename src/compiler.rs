@@ -35,13 +35,7 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Comma { .. }
             | Token::Semicolon { .. }
             | Token::Bang { .. }
-            | Token::BangEql { .. }
             | Token::Eql { .. }
-            | Token::EqlEql { .. }
-            | Token::Greater { .. }
-            | Token::GreaterEql { .. }
-            | Token::Less { .. }
-            | Token::LessEql { .. }
             | Token::Identifier { .. }
             | Token::NumLit { .. }
             | Token::StrLit { .. }
@@ -62,8 +56,18 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Var { .. }
             | Token::While { .. }
             | Token::Dot { .. } => PrecedenceLvl::Null,
+
+            Token::BangEql { .. }
+            | Token::EqlEql { .. } => PrecedenceLvl::Equality,
+
+            Token::Greater { .. }
+            | Token::GreaterEql { .. }
+            | Token::Less { .. }
+            | Token::LessEql { .. } => PrecedenceLvl::Comparison,
+
             Token::Minus { .. }
             | Token::Plus { .. } => PrecedenceLvl::Term,
+
             Token::Slash { .. }
             | Token::Star { .. } => PrecedenceLvl::Factor,
         }
@@ -254,6 +258,10 @@ impl<'a> Compiler<'a> {
                 op: OpCode::Negate,
                 line,
             }),
+            Some(Token::Bang { line }) => self.emit_instr(Instruction {
+                op: OpCode::Not,
+                line,
+            }),
             _ => (),
         }
     }
@@ -290,6 +298,72 @@ impl<'a> Compiler<'a> {
                     op: OpCode::Divide,
                     line,
                 }),
+            Token::BangEql { line } => {
+                self.emit_instr(Instruction {
+                    op: OpCode::Equal,
+                    line,
+                });
+                self.emit_instr(Instruction {
+                    op: OpCode::Not,
+                    line,
+                });
+            },
+            Token::EqlEql { line } =>
+                self.emit_instr(Instruction {
+                    op: OpCode::Equal,
+                    line,
+                }),
+            Token::Greater { line } => 
+                self.emit_instr(Instruction {
+                    op: OpCode::Greater,
+                    line,
+                }),
+            Token::GreaterEql { line } => {
+                self.emit_instr(Instruction {
+                    op: OpCode::Less,
+                    line,
+                });
+                self.emit_instr(Instruction {
+                    op: OpCode::Not,
+                    line,
+                });
+            }
+            Token::Less { line } => 
+                self.emit_instr(Instruction {
+                    op: OpCode::Less,
+                    line,
+                }),
+            Token::LessEql { line } => {
+                self.emit_instr(Instruction {
+                    op: OpCode::Greater,
+                    line,
+                });
+                self.emit_instr(Instruction {
+                    op: OpCode::Not,
+                    line,
+                });
+            },
+            _ => (),
+        }
+    }
+
+    fn literal(&mut self) {
+        match self.previous {
+            Some(Token::True { line }) =>
+                self.emit_instr(Instruction {
+                    op: OpCode::Constant(LoxVal::Bool(true)),
+                    line,
+                }),
+            Some(Token::False { line }) =>
+                self.emit_instr(Instruction {
+                    op: OpCode::Constant(LoxVal::Bool(false)),
+                    line,
+                }),
+            Some(Token::Nil { line }) =>
+                self.emit_instr(Instruction {
+                    op: OpCode::Constant(LoxVal::Nil),
+                    line,
+                }),
             _ => (),
         }
     }
@@ -313,7 +387,10 @@ impl<'a> Compiler<'a> {
             Token::Semicolon { .. } => Err(()),
             Token::Slash { .. } => Err(()),
             Token::Star { .. } => Err(()),
-            Token::Bang { .. } => Err(()),
+            Token::Bang { .. } => {
+                self.unary();
+                Ok(())
+            },
             Token::BangEql { .. } => Err(()),
             Token::Eql { .. } => Err(()),
             Token::EqlEql { .. } => Err(()),
@@ -330,17 +407,26 @@ impl<'a> Compiler<'a> {
             Token::And { .. } => Err(()),
             Token::Class { .. } => Err(()),
             Token::Else { .. } => Err(()),
-            Token::False { .. } => Err(()),
+            Token::False { .. } => {
+                self.literal();
+                Ok(())
+            },
             Token::For { .. } => Err(()),
             Token::Fun { .. } => Err(()),
             Token::If { .. } => Err(()),
-            Token::Nil { .. } => Err(()),
+            Token::Nil { .. } => {
+                self.literal();
+                Ok(())
+            },
             Token::Or { .. } => Err(()),
             Token::Print { .. } => Err(()),
             Token::Return { .. } => Err(()),
             Token::Super { .. } => Err(()),
             Token::This { .. } => Err(()),
-            Token::True { .. } => Err(()),
+            Token::True { .. } => {
+                self.literal();
+                Ok(())
+            },
             Token::Var { .. } => Err(()),
             Token::While { .. } => Err(()),
         }
@@ -354,19 +440,9 @@ impl<'a> Compiler<'a> {
             Token::RBrace { .. } => (),
             Token::Comma { .. } => (),
             Token::Dot { .. } => (),
-            Token::Minus { .. } => self.binary(),
-            Token::Plus { .. } => self.binary(),
             Token::Semicolon { .. } => (),
-            Token::Slash { .. } => self.binary(),
-            Token::Star { .. } => self.binary(),
             Token::Bang { .. } => (),
-            Token::BangEql { .. } => (),
             Token::Eql { .. } => (),
-            Token::EqlEql { .. } => (),
-            Token::Greater { .. } => (),
-            Token::GreaterEql { .. } => (),
-            Token::Less { .. } => (),
-            Token::LessEql { .. } => (),
             Token::Identifier { .. } => (),
             Token::NumLit { .. } => (),
             Token::StrLit { .. } => (),
@@ -386,6 +462,16 @@ impl<'a> Compiler<'a> {
             Token::True { .. } => (),
             Token::Var { .. } => (),
             Token::While { .. } => (),
+            Token::Plus { .. }
+            | Token::Minus { .. }
+            | Token::Slash { .. }
+            | Token::Star { .. }
+            | Token::BangEql { .. }
+            | Token::EqlEql { .. }
+            | Token::Greater { .. }
+            | Token::GreaterEql { .. }
+            | Token::Less { .. }
+            | Token::LessEql { .. } => self.binary(),
         }
     }
 }

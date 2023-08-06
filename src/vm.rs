@@ -1,13 +1,18 @@
 use crate::chunk::{Chunk, Instruction, LoxVal::{self, Num, Str}, OpCode};
 
-type Value = ();
-
 pub struct VM<'a> {
     chunk: &'a Chunk,
     ip: usize,
     stack: Vec<LoxVal>,
 }
 
+impl<'a> From<&'a Chunk> for VM<'a> {
+    fn from(chunk: &'a Chunk) -> Self {
+        VM { chunk, ip: 0, stack: Vec::new() }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum VMError {
     EndedWithNoReturn,
     StackExhausted {
@@ -32,7 +37,7 @@ impl VMError {
 }
 
 impl<'a> VM<'a> {
-    fn interpret(&mut self, chunk: &Chunk) -> Result<(), VMError> {
+    pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         for instr in &self.chunk.0 {
             match &instr.op {
                 OpCode::Add => match (self.pop_val(), self.pop_val()) {
@@ -78,6 +83,43 @@ impl<'a> VM<'a> {
                     (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
                 },
 
+                OpCode::Equal => match (self.pop_val(), self.pop_val()) {
+                    (Some(rhs), Some(lhs)) => self.push_val(LoxVal::Bool(lhs == rhs)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                }
+                OpCode::Greater => match (self.pop_val(), self.pop_val()) {
+                    (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l>r)),
+                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the right side of the > operator".to_string(),
+                    }),
+                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the left side of the > operator".to_string(),
+                    }),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                },
+                OpCode::Less => match (self.pop_val(), self.pop_val()) {
+                    (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l<r)),
+                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the right side of the < operator".to_string(),
+                    }),
+                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the left side of the < operator".to_string(),
+                    }),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                },
+
                 OpCode::Multiply => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l*r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
@@ -107,11 +149,32 @@ impl<'a> VM<'a> {
                     }),
                 }
 
-                OpCode::Substract => todo!(),
+                OpCode::Not => match self.pop_val() {
+                    Some(val) => self.push_val(val.cast_to_not_bool()),
+                    _ => return Err(VMError::stack_exhausted(instr)),
+                }
+
+                OpCode::Substract => match (self.pop_val(), self.pop_val()) {
+                    (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
+                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the right side of the - operator".to_string(),
+                    }),
+                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the left side of the - operator".to_string(),
+                    }),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                },
+
 
                 OpCode::Return => {
-                    if let Some(_) = self.pop_val() {
-                        return Ok(())
+                    if let Some(val) = self.pop_val() {
+                        return Ok(val)
                     }
                     return Err(VMError::stack_exhausted(instr));
                 },
@@ -133,6 +196,10 @@ impl<'a> VM<'a> {
 
     fn pop_val(&mut self) -> Option<LoxVal> {
         self.stack.pop()
+    }
+
+    fn peek(&mut self, depth: usize) -> Option<&LoxVal> {
+        self.stack.get(self.stack.len() - 1 - depth)
     }
 }
 
