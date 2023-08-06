@@ -340,117 +340,77 @@ mod tests {
     }
 
     #[test]
-    fn scan_lparen() {
+    fn scan_single_token() {
         let toks = scan("(");
-        assert_eq!(toks[..], [Token::LParen { line: 1 }])
-    }
-
-    #[test]
-    fn scan_rparen() {
+        assert_eq!(toks[..], [Token::LParen { line: 1 }]);
         let toks = scan(")");
-        assert_eq!(toks[..], [Token::RParen { line: 1 }])
-    }
-
-    #[test]
-    fn scan_lbrace() {
+        assert_eq!(toks[..], [Token::RParen { line: 1 }]);
         let toks = scan("{");
-        assert_eq!(toks[..], [Token::LBrace { line: 1 }])
-    }
-
-    #[test]
-    fn scan_rbrace() {
+        assert_eq!(toks[..], [Token::LBrace { line: 1 }]);
         let toks = scan("}");
-        assert_eq!(toks[..], [Token::RBrace { line: 1 }])
-    }
-
-    #[test]
-    fn scan_comma() {
+        assert_eq!(toks[..], [Token::RBrace { line: 1 }]);
         let toks = scan(",");
-        assert_eq!(toks[..], [Token::Comma { line: 1 }])
-    }
-
-    #[test]
-    fn scan_dot() {
+        assert_eq!(toks[..], [Token::Comma { line: 1 }]);
         let toks = scan(".");
-        assert_eq!(toks[..], [Token::Dot { line: 1 }])
-    }
-
-    #[test]
-    fn scan_minus() {
+        assert_eq!(toks[..], [Token::Dot { line: 1 }]);
         let toks = scan("-");
-        assert_eq!(toks[..], [Token::Minus { line: 1 }])
-    }
-
-    #[test]
-    fn scan_plus() {
+        assert_eq!(toks[..], [Token::Minus { line: 1 }]);
         let toks = scan("+");
-        assert_eq!(toks[..], [Token::Plus { line: 1 }])
-    }
-
-    #[test]
-    fn scan_semicolon() {
+        assert_eq!(toks[..], [Token::Plus { line: 1 }]);
         let toks = scan(";");
-        assert_eq!(toks[..], [Token::Semicolon { line: 1 }])
-    }
-
-    #[test]
-    fn scan_slash() {
+        assert_eq!(toks[..], [Token::Semicolon { line: 1 }]);
         let toks = scan("/");
-        assert_eq!(toks[..], [Token::Slash { line: 1 }])
-    }
-
-    #[test]
-    fn scan_star() {
+        assert_eq!(toks[..], [Token::Slash { line: 1 }]);
         let toks = scan("*");
-        assert_eq!(toks[..], [Token::Star { line: 1 }])
-    }
-
-    #[test]
-    fn scan_bang() {
+        assert_eq!(toks[..], [Token::Star { line: 1 }]);
         let toks = scan("!");
-        assert_eq!(toks[..], [Token::Bang { line: 1 }])
-    }
-
-    #[test]
-    fn scan_bangeql() {
+        assert_eq!(toks[..], [Token::Bang { line: 1 }]);
         let toks = scan("!=");
-        assert_eq!(toks[..], [Token::BangEql { line: 1 }])
-    }
-
-    #[test]
-    fn scan_eql() {
+        assert_eq!(toks[..], [Token::BangEql { line: 1 }]);
         let toks = scan("=");
-        assert_eq!(toks[..], [Token::Eql { line: 1 }])
-    }
-
-    #[test]
-    fn scan_eqleql() {
+        assert_eq!(toks[..], [Token::Eql { line: 1 }]);
         let toks = scan("==");
-        assert_eq!(toks[..], [Token::EqlEql { line: 1 }])
-    }
-
-    #[test]
-    fn scan_greater() {
+        assert_eq!(toks[..], [Token::EqlEql { line: 1 }]);
         let toks = scan(">");
-        assert_eq!(toks[..], [Token::Greater { line: 1 }])
-    }
-
-    #[test]
-    fn scan_greatereql() {
+        assert_eq!(toks[..], [Token::Greater { line: 1 }]);
         let toks = scan(">=");
-        assert_eq!(toks[..], [Token::GreaterEql { line: 1 }])
-    }
-
-    #[test]
-    fn scan_less() {
+        assert_eq!(toks[..], [Token::GreaterEql { line: 1 }]);
         let toks = scan("<");
-        assert_eq!(toks[..], [Token::Less { line: 1 }])
-    }
-
-    #[test]
-    fn scan_lesseql() {
+        assert_eq!(toks[..], [Token::Less { line: 1 }]);
         let toks = scan("<=");
-        assert_eq!(toks[..], [Token::LessEql { line: 1 }])
+        assert_eq!(toks[..], [Token::LessEql { line: 1 }]);
+        let toks = scan("and");
+        assert_eq!(toks[..], [Token::And { line: 1 }]);
+        let toks = scan("class");
+        assert_eq!(toks[..], [Token::Class { line: 1 }]);
+        let toks = scan("else");
+        assert_eq!(toks[..], [Token::Else { line: 1 }]);
+        let toks = scan("false");
+        assert_eq!(toks[..], [Token::False { line: 1 }]);
+        let toks = scan("for");
+        assert_eq!(toks[..], [Token::For { line: 1 }]);
+        let toks = scan("fun");
+        assert_eq!(toks[..], [Token::Fun { line: 1 }]);
+        let toks = scan("if");
+        assert_eq!(toks[..], [Token::If { line: 1 }]);
+        let toks = scan("nil");
+        assert_eq!(toks[..], [Token::Nil { line: 1 }]);
+        let toks = scan("or");
+        assert_eq!(toks[..], [Token::Or { line: 1 }]);
+        let toks = scan("print");
+        assert_eq!(toks[..], [Token::Print { line: 1 }]);
+        let toks = scan("return");
+        assert_eq!(toks[..], [Token::Return { line: 1 }]);
+        let toks = scan("super");
+        assert_eq!(toks[..], [Token::Super { line: 1 }]);
+        let toks = scan("this");
+        assert_eq!(toks[..], [Token::This { line: 1 }]);
+        let toks = scan("true");
+        assert_eq!(toks[..], [Token::True { line: 1 }]);
+        let toks = scan("var");
+        assert_eq!(toks[..], [Token::Var { line: 1 }]);
+        let toks = scan("while");
+        assert_eq!(toks[..], [Token::While { line: 1 }]);
     }
 
     #[test]
@@ -516,101 +476,5 @@ mod tests {
 
         let toks = scan(r#""🤔""#);
         assert_eq!(toks[..], [Token::StrLit { content: String::from("🤔"), line: 1 } ]);
-    }
-
-    #[test]
-    fn scan_and() {
-        let toks = scan("and");
-        assert_eq!(toks[..], [Token::And { line: 1 }])
-    }
-
-    #[test]
-    fn scan_class() {
-        let toks = scan("class");
-        assert_eq!(toks[..], [Token::Class { line: 1 }])
-    }
-
-    #[test]
-    fn scan_else() {
-        let toks = scan("else");
-        assert_eq!(toks[..], [Token::Else { line: 1 }])
-    }
-
-    #[test]
-    fn scan_false() {
-        let toks = scan("false");
-        assert_eq!(toks[..], [Token::False { line: 1 }])
-    }
-
-    #[test]
-    fn scan_for() {
-        let toks = scan("for");
-        assert_eq!(toks[..], [Token::For { line: 1 }])
-    }
-
-    #[test]
-    fn scan_fun() {
-        let toks = scan("fun");
-        assert_eq!(toks[..], [Token::Fun { line: 1 }])
-    }
-
-    #[test]
-    fn scan_if() {
-        let toks = scan("if");
-        assert_eq!(toks[..], [Token::If { line: 1 }])
-    }
-
-    #[test]
-    fn scan_nil() {
-        let toks = scan("nil");
-        assert_eq!(toks[..], [Token::Nil { line: 1 }])
-    }
-
-    #[test]
-    fn scan_or() {
-        let toks = scan("or");
-        assert_eq!(toks[..], [Token::Or { line: 1 }])
-    }
-
-    #[test]
-    fn scan_print() {
-        let toks = scan("print");
-        assert_eq!(toks[..], [Token::Print { line: 1 }])
-    }
-
-    #[test]
-    fn scan_return() {
-        let toks = scan("return");
-        assert_eq!(toks[..], [Token::Return { line: 1 }])
-    }
-
-    #[test]
-    fn scan_super() {
-        let toks = scan("super");
-        assert_eq!(toks[..], [Token::Super { line: 1 }])
-    }
-
-    #[test]
-    fn scan_this() {
-        let toks = scan("this");
-        assert_eq!(toks[..], [Token::This { line: 1 }])
-    }
-
-    #[test]
-    fn scan_true() {
-        let toks = scan("true");
-        assert_eq!(toks[..], [Token::True { line: 1 }])
-    }
-
-    #[test]
-    fn scan_var() {
-        let toks = scan("var");
-        assert_eq!(toks[..], [Token::Var { line: 1 }])
-    }
-
-    #[test]
-    fn scan_while() {
-        let toks = scan("while");
-        assert_eq!(toks[..], [Token::While { line: 1 }])
     }
 }
