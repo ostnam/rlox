@@ -241,6 +241,15 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn string(&mut self) {
+        if let Some(Token::StrLit { content, line }) = &self.previous {
+            self.emit_instr(Instruction {
+                op: OpCode::Constant(LoxVal::Str(content.clone())),
+                line: *line,
+            });
+        }
+    }
+
     // assumes the leading '(' has already been consumed
     fn grouping(&mut self) {
         self.expression();
@@ -403,7 +412,10 @@ impl<'a> Compiler<'a> {
                 self.number();
                 Ok(())
             },
-            Token::StrLit { .. } => Err(()),
+            Token::StrLit { .. } => {
+                self.string();
+                Ok(())
+            },
             Token::And { .. } => Err(()),
             Token::Class { .. } => Err(()),
             Token::Else { .. } => Err(()),
@@ -495,6 +507,17 @@ mod tests {
     }
 
     #[test]
+    fn compile_string() {
+        assert_eq!(
+            run_compiler(r#""hello lox""#),
+            Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Str("hello lox".to_string())), line: 1 },
+                Instruction { op: OpCode::Return, line: 0 },
+            ])
+        )
+    }
+
+    #[test]
     fn compile_add() {
         assert_eq!(
             run_compiler("10 + 20 + 30"),
@@ -506,7 +529,19 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Return, line: 0 },
             ])
-        )
+        );
+
+        assert_eq!(
+            run_compiler(r#""hello" + " " + "lox""#),
+            Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Str("hello".to_string())), line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Str(" ".to_string())), line: 1 },
+                Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Str("lox".to_string())), line: 1 },
+                Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Return, line: 0 },
+            ])
+        );
     }
 
     #[test]

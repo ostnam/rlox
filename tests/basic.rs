@@ -39,6 +39,25 @@ fn test_add_num() {
 }
 
 #[test]
+fn test_add_str() {
+    assert_eq!(
+        common::run_program(r#""hello" + " " + "lox""#),
+        Ok(LoxVal::Str("hello lox".to_string())),
+    );
+}
+
+#[test]
+fn test_add_type_error() {
+    assert!(matches!(
+        common::run_program(r#""hello " + 10"#),
+        Err(VMError::TypeError {
+            line: 1,
+            ..
+        }),
+    ));
+}
+
+#[test]
 fn test_sub_num() {
     assert_eq!(
         common::run_program("10 - 21"),
