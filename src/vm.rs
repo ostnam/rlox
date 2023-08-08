@@ -177,12 +177,7 @@ impl<'a> VM<'a> {
                 },
 
 
-                OpCode::Return => {
-                    if let Some(val) = self.pop_val() {
-                        return Ok(val)
-                    }
-                    return Err(VMError::stack_exhausted(instr));
-                },
+                OpCode::Return => return Ok(self.pop_val().unwrap_or(LoxVal::Nil)),
             }
         };
 

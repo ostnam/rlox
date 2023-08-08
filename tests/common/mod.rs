@@ -1,9 +1,11 @@
-use rlox::{chunk::LoxVal, vm::{VMError, VM}, compiler::Compiler};
+use rlox::chunk::LoxVal;
+use rlox::compiler::Compiler;
+use rlox::vm::{VMError, VM};
 
 pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
     let chunk = Compiler::new(src)
         .unwrap()
-        .compile()
+        .compile_expr()
         .unwrap();
 
     VM::from(&chunk).interpret()

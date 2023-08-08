@@ -51,6 +51,51 @@ pub enum Token {
     While      { line: u64 },
 }
 
+impl Token {
+    pub fn line(&self) -> u64 {
+        match self {
+            Token::LParen { line } => *line,
+            Token::RParen { line } => *line,
+            Token::LBrace { line } => *line,
+            Token::RBrace { line } => *line,
+            Token::Comma { line } => *line,
+            Token::Dot { line } => *line,
+            Token::Minus { line } => *line,
+            Token::Plus { line } => *line,
+            Token::Semicolon { line } => *line,
+            Token::Slash { line } => *line,
+            Token::Star { line } => *line,
+            Token::Bang { line } => *line,
+            Token::BangEql { line } => *line,
+            Token::Eql { line } => *line,
+            Token::EqlEql { line } => *line,
+            Token::Greater { line } => *line,
+            Token::GreaterEql { line } => *line,
+            Token::Less { line } => *line,
+            Token::LessEql { line } => *line,
+            Token::Identifier { name, line } => *line,
+            Token::NumLit { value, line } => *line,
+            Token::StrLit { content, line } => *line,
+            Token::And { line } => *line,
+            Token::Class { line } => *line,
+            Token::Else { line } => *line,
+            Token::False { line } => *line,
+            Token::For { line } => *line,
+            Token::Fun { line } => *line,
+            Token::If { line } => *line,
+            Token::Nil { line } => *line,
+            Token::Or { line } => *line,
+            Token::Print { line } => *line,
+            Token::Return { line } => *line,
+            Token::Super { line } => *line,
+            Token::This { line } => *line,
+            Token::True { line } => *line,
+            Token::Var { line } => *line,
+            Token::While { line } => *line,
+        }
+    }
+}
+
 /// Every error that can occur while scanning.
 #[derive(Debug)]
 pub enum ScanError {

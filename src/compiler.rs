@@ -120,6 +120,21 @@ impl<'a> Compiler<'a> {
 
     pub fn compile(mut self) -> Result<Chunk, ()> {
         self.advance();
+        while self.current.is_some() {
+            self.declaration();
+        }
+        if let Err(e) = self.end_compilation() {
+            self.emit_error(&e);
+        }
+
+        match self.had_error {
+            false => Ok(self.result),
+            true => Err(()),
+        }
+    }
+
+    pub fn compile_expr(mut self) -> Result<Chunk, ()> {
+        self.advance();
         self.expression();
         if let Err(e) = self.end_compilation() {
             self.emit_error(&e);
@@ -198,8 +213,25 @@ impl<'a> Compiler<'a> {
         err: &CompilationError
     ) {
         match &self.current {
-            Some(t) if f(t) => self.advance(),
+            Some(t) if f(t) => {
+                self.current_line = t.line();
+                self.advance();
+            }
             _ => self.emit_error(err)
+        }
+    }
+
+    fn matches<F: Fn(&Token) -> bool>(
+        &mut self,
+        f: F,
+    ) -> bool {
+        match &self.current {
+            Some(t) if f(t) => {
+                self.current_line = t.line();
+                self.advance();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -279,6 +311,32 @@ impl<'a> Compiler<'a> {
             }),
             _ => (),
         }
+    }
+
+    fn declaration(&mut self) {
+        self.statement()
+    }
+
+    fn statement(&mut self) {
+        if self.matches(|t| matches!(t, Token::Print { .. })) {
+            self.print_statement();
+        }
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(
+            |t| matches!(t, Token::Semicolon { .. }),
+            &CompilationError::Raw {
+                text: String::from("Print statement semicolon is missing at line")
+            }
+        );
+        self.emit_instr(
+            Instruction {
+                op: OpCode::Print,
+                line: self.current_line,
+            }
+        )
     }
 
     fn expression(&mut self) {
@@ -498,7 +556,7 @@ impl<'a> Compiler<'a> {
 mod tests {
     use super::*;
     fn run_compiler(program: &str) -> Chunk {
-        Compiler::new(program).unwrap().compile().unwrap()
+        Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
     #[test]

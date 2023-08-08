@@ -1,4 +1,5 @@
-use rlox::{chunk::LoxVal, vm::VMError};
+use rlox::chunk::LoxVal;
+use rlox::vm::VMError;
 
 mod common;
 
