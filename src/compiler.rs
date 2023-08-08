@@ -8,6 +8,7 @@ pub struct Compiler<'a> {
     current: Option<Token>,
     had_error: bool,
     panic_mode: bool,
+    current_line: u64,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -113,6 +114,7 @@ impl<'a> Compiler<'a> {
             current: None,
             had_error: false,
             panic_mode: false,
+            current_line: 0,
         })
     }
 
@@ -168,6 +170,10 @@ impl<'a> Compiler<'a> {
 
     fn advance(&mut self) {
         self.previous = self.current.clone();
+        self.current_line = self.previous
+            .clone()
+            .map(|t| t.line())
+            .unwrap_or(0);
         loop {
             match self.scanner.next() {
                 Some(Ok(tok)) => {
