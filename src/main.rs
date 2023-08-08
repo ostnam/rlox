@@ -1,6 +1,8 @@
-use std::io;
+use std::io::{self, Write};
 
 use clap::Parser;
+
+use rlox::run;
 
 #[derive(Parser)]
 #[command(author, about)]
@@ -18,16 +20,20 @@ fn main() {
 
 fn repl() {
     let stdin = io::stdin();
+    let mut stdout = io::stdout();
     let mut buffer = String::new();
     loop {
         print!("> ");
+        stdout.flush().expect("error flushing stdout");
         let res = stdin.read_line(&mut buffer);
         if let Err(e) = res {
             println!("");
             panic!("Error reading input line: {}", e);
         }
-
-//        interpret(buffer);
+        match run::run_program(&buffer) {
+            Ok(val) => println!("{val}"),
+            Err(e) => println!("{e:?}"),
+        }
     }
 }
 
