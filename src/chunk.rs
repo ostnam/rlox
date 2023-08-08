@@ -60,6 +60,7 @@ impl std::fmt::Display for LoxVal {
 pub enum OpCode {
     Add,
     Constant(LoxVal),
+    DefineGlobal(String),
     Divide,
     Equal,
     Greater,
@@ -67,6 +68,7 @@ pub enum OpCode {
     Multiply,
     Negate,
     Not,
+    Pop,
     Print,
     Return,
     Substract,
@@ -83,6 +85,7 @@ impl Display for OpCode {
         let name = match self {
             OpCode::Add => "ADD".to_string(),
             OpCode::Constant(idx) => format!("CONSTANT {idx}"),
+            OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
             OpCode::Divide => "DIVIDE".to_string(),
             OpCode::Equal => "EQUAL".to_string(),
             OpCode::Greater => "GREATER".to_string(),
@@ -90,6 +93,7 @@ impl Display for OpCode {
             OpCode::Multiply => "MULTIPLY".to_string(),
             OpCode::Negate => "NEGATE".to_string(),
             OpCode::Not => "NOT".to_string(),
+            OpCode::Pop => "POP".to_string(),
             OpCode::Print => "PRINT".to_string(),
             OpCode::Return => "RETURN".to_string(),
             OpCode::Substract => "SUBSTRACT".to_string(),

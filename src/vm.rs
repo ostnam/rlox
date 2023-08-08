@@ -1,14 +1,17 @@
+use std::collections::HashMap;
+
 use crate::chunk::{Chunk, Instruction, LoxVal::{self, Num, Str}, OpCode};
 
 pub struct VM<'a> {
     chunk: &'a Chunk,
     ip: usize,
     stack: Vec<LoxVal>,
+    globals: HashMap<&'a str, LoxVal>,
 }
 
 impl<'a> From<&'a Chunk> for VM<'a> {
     fn from(chunk: &'a Chunk) -> Self {
-        VM { chunk, ip: 0, stack: Vec::new() }
+        VM { chunk, ip: 0, stack: Vec::new(), globals: HashMap::new(), }
     }
 }
 
@@ -65,6 +68,13 @@ impl<'a> VM<'a> {
                 }
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
+
+                OpCode::DefineGlobal(name) => match self.pop_val() {
+                    Some(val) => {
+                        self.globals.insert(name, val);
+                    },
+                    None => return Err(VMError::stack_exhausted(instr)),
+                },
 
                 OpCode::Divide => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l/r)),
@@ -153,6 +163,10 @@ impl<'a> VM<'a> {
                     Some(val) => self.push_val(val.cast_to_not_bool()),
                     _ => return Err(VMError::stack_exhausted(instr)),
                 }
+
+                OpCode::Pop => {
+                    self.pop_val();
+                },
 
                 OpCode::Print => match self.pop_val() {
                     Some(val) => println!("{val}"),

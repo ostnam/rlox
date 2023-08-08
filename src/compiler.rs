@@ -314,12 +314,78 @@ impl<'a> Compiler<'a> {
     }
 
     fn declaration(&mut self) {
-        self.statement()
+        if self.matches(|t| matches!(t, Token::Var { .. })) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+        while self.current.is_some() {
+            if matches!(self.previous, Some(Token::Semicolon { .. })) {
+                return;
+            }
+            match self.current {
+                Some( Token::Class  { .. }
+                    | Token::Fun    { .. }
+                    | Token::Var    { .. }
+                    | Token::For    { .. }
+                    | Token::If     { .. }
+                    | Token::While  { .. }
+                    | Token::Print  { .. }
+                    | Token::Return { .. }
+                    ) => return,
+                _ => (),
+            }
+            self.advance();
+        }
+    }
+
+    // The var keyword must already have been matched.
+    fn var_declaration(&mut self) {
+        let (var_name, line) = match &self.current {
+            Some(t@Token::Identifier { name, line }) => (name.clone(), *line),
+            other => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                      "[{}]: Expected variable name after keyword var but got: {:?}",
+                      self.current_line,
+                      other,
+                  )
+                });
+                return;
+            }
+        };
+        if self.matches(|t| matches!(t, Token::Eql { .. })) {
+            self.expression();
+        } else {
+            self.emit_instr(Instruction {
+                op: OpCode::Constant(LoxVal::Nil),
+                line: self.current_line
+            })
+        }
+        self.consume(
+            |t| matches!(t, Token::Semicolon { .. }),
+            &CompilationError::Raw{
+                text: format!("[{}]: Missing semicolon after variable declaration.", self.current_line),
+            },
+        );
+        self.emit_instr(Instruction {
+            op: OpCode::DefineGlobal(var_name),
+            line,
+        })
     }
 
     fn statement(&mut self) {
         if self.matches(|t| matches!(t, Token::Print { .. })) {
             self.print_statement();
+        } else {
+            self.expr_statement();
         }
     }
 
@@ -328,12 +394,34 @@ impl<'a> Compiler<'a> {
         self.consume(
             |t| matches!(t, Token::Semicolon { .. }),
             &CompilationError::Raw {
-                text: String::from("Print statement semicolon is missing at line")
+                text: format!(
+                    "[{}]: print statement semicolon is missing at line",
+                    self.current_line,
+                )
             }
         );
         self.emit_instr(
             Instruction {
                 op: OpCode::Print,
+                line: self.current_line,
+            }
+        )
+    }
+
+    fn expr_statement(&mut self) {
+        self.expression();
+        self.consume(
+            |t| matches!(t, Token::Semicolon { .. }),
+            &CompilationError::Raw {
+                text: format!(
+                    "[{}]: expected ; after expression",
+                    self.current_line,
+                )
+            }
+        );
+        self.emit_instr(
+            Instruction {
+                op: OpCode::Pop,
                 line: self.current_line,
             }
         )
