@@ -94,14 +94,14 @@ impl PrecedenceLvl {
 }
 
 enum CompilationError {
-    TokensLeft,
-    UnclosedParens {
-        line: u64
-    },
     Raw {
         text: String,
     },
     ScanError(scanner::ScanError),
+    TokensLeft,
+    UnclosedParens {
+        line: u64
+    },
 }
 
 impl<'a> Compiler<'a> {
