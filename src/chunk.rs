@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum LoxVal {
     Bool(bool),
     Nil,
@@ -33,7 +33,7 @@ impl LoxVal {
     }
 }
 
-impl Display for LoxVal {
+impl std::fmt::Debug for LoxVal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LoxVal::Bool(b) => write!(f, "Bool: {b}"),
@@ -43,6 +43,18 @@ impl Display for LoxVal {
         }
     }
 }
+
+impl std::fmt::Display for LoxVal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoxVal::Bool(b) => write!(f, "{b}"),
+            LoxVal::Nil     => write!(f, "nil"),
+            LoxVal::Num(n)  => write!(f, "{n}"),
+            LoxVal::Str(s)  => write!(f, "{s}"),
+        }
+    }
+}
+
 
 #[derive(Debug, PartialEq)]
 pub enum OpCode {
