@@ -154,6 +154,11 @@ impl<'a> VM<'a> {
                     _ => return Err(VMError::stack_exhausted(instr)),
                 }
 
+                OpCode::Print => match self.pop_val() {
+                    Some(val) => println!("{val}"),
+                    _ => return Err(VMError::stack_exhausted(instr)),
+                }
+
                 OpCode::Substract => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {

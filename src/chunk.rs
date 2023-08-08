@@ -67,6 +67,7 @@ pub enum OpCode {
     Multiply,
     Negate,
     Not,
+    Print,
     Return,
     Substract,
 }
@@ -89,6 +90,7 @@ impl Display for OpCode {
             OpCode::Multiply => "MULTIPLY".to_string(),
             OpCode::Negate => "NEGATE".to_string(),
             OpCode::Not => "NOT".to_string(),
+            OpCode::Print => "PRINT".to_string(),
             OpCode::Return => "RETURN".to_string(),
             OpCode::Substract => "SUBSTRACT".to_string(),
         };
