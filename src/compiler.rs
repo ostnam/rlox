@@ -347,7 +347,7 @@ impl<'a> Compiler<'a> {
     // The var keyword must already have been matched.
     fn var_declaration(&mut self) {
         let (var_name, line) = match &self.current {
-            Some(t@Token::Identifier { name, line }) => (name.clone(), *line),
+            Some(Token::Identifier { name, line }) => (name.clone(), *line),
             other => {
                 self.emit_error(&CompilationError::Raw {
                     text: format!(
