@@ -241,12 +241,18 @@ impl<'a> Compiler<'a> {
 
     fn parse_precedence(&mut self, precedence: PrecedenceLvl) {
         self.advance();
-        match self.prefix_rule(&self.previous.clone()) {
+        let can_assign = precedence <= PrecedenceLvl::Assignment;
+        match self.prefix_rule(&self.previous.clone(), can_assign) {
             Ok(_) => (),
             Err(_) => self.emit_error(&CompilationError::Raw{
                 text: String::from("Expected expression.")
             }),
         };
+        if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+            self.emit_error(&CompilationError::Raw {
+                text: String::from("Invalid assignment target"),
+            });
+        }
 
         let mut current = match &self.current {
             Some(t) => t.clone(),
@@ -254,7 +260,7 @@ impl<'a> Compiler<'a> {
         };
         while precedence <= PrecedenceLvl::from(&current) {
             self.advance();
-            self.infix_rule(&self.previous.clone());
+            self.infix_rule(&self.previous.clone(), can_assign);
             current = match &self.current {
                 Some(t) => t.clone(),
                 None => return,
@@ -262,7 +268,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, _can_assign: bool) {
         if let Token::NumLit { value, line } = self.previous {
             self.emit_instr(Instruction {
                 op: OpCode::Constant(LoxVal::Num(value)),
@@ -271,6 +277,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn string(&mut self, _can_assign: bool) {
         if let Token::StrLit { content, line } = &self.previous {
             self.emit_instr(Instruction {
                 op: OpCode::Constant(LoxVal::Str(content.clone())),
@@ -280,7 +287,7 @@ impl<'a> Compiler<'a> {
     }
 
     // assumes the leading '(' has already been consumed
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(
             |t| matches!(t, Token::RParen { .. }),
@@ -288,7 +295,7 @@ impl<'a> Compiler<'a> {
         )
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let op = self.previous.clone();
         self.parse_precedence(PrecedenceLvl::Unary);
         match op {
@@ -422,7 +429,7 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(PrecedenceLvl::Assignment);
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let op = self.previous.clone();
         self.parse_precedence(PrecedenceLvl::from(&self.previous).next());
 
@@ -496,7 +503,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         match self.previous {
             Token::True { line } =>
                 self.emit_instr(Instruction {
@@ -517,10 +524,27 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn prefix_rule(&mut self, token: &Token) -> Result<(), ()> {
+    fn variable(&mut self, can_assign: bool) {
+        if let Token::Identifier { name, line } = self.previous.clone() {
+            if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+                self.expression();
+                self.emit_instr(Instruction {
+                    op: OpCode::SetGlobal(name.clone()),
+                    line,
+                })
+            } else {
+                self.emit_instr(Instruction {
+                    op: OpCode::GetGlobal(name),
+                    line
+                })
+            }
+        }
+    }
+
+    fn prefix_rule(&mut self, token: &Token, can_assign: bool) -> Result<(), ()> {
         match token {
             Token::LParen { .. } => {
-                self.grouping();
+                self.grouping(can_assign);
                 Ok(())
             },
             Token::RParen { .. } => Err(()),
@@ -529,7 +553,7 @@ impl<'a> Compiler<'a> {
             Token::Comma { .. } => Err(()),
             Token::Dot { .. } => Err(()),
             Token::Minus { .. } => {
-                self.unary();
+                self.unary(can_assign);
                 Ok(())
             },
             Token::Plus { .. } => Err(()),
@@ -537,7 +561,7 @@ impl<'a> Compiler<'a> {
             Token::Slash { .. } => Err(()),
             Token::Star { .. } => Err(()),
             Token::Bang { .. } => {
-                self.unary();
+                self.unary(can_assign);
                 Ok(())
             },
             Token::BangEql { .. } => Err(()),
@@ -547,27 +571,30 @@ impl<'a> Compiler<'a> {
             Token::GreaterEql { .. } => Err(()),
             Token::Less { .. } => Err(()),
             Token::LessEql { .. } => Err(()),
-            Token::Identifier { .. } => Err(()),
+            Token::Identifier { .. } => {
+                self.variable(can_assign);
+                Ok(())
+            },
             Token::NumLit { .. } => {
-                self.number();
+                self.number(can_assign);
                 Ok(())
             },
             Token::StrLit { .. } => {
-                self.string();
+                self.string(can_assign);
                 Ok(())
             },
             Token::And { .. } => Err(()),
             Token::Class { .. } => Err(()),
             Token::Else { .. } => Err(()),
             Token::False { .. } => {
-                self.literal();
+                self.literal(can_assign);
                 Ok(())
             },
             Token::For { .. } => Err(()),
             Token::Fun { .. } => Err(()),
             Token::If { .. } => Err(()),
             Token::Nil { .. } => {
-                self.literal();
+                self.literal(can_assign);
                 Ok(())
             },
             Token::Or { .. } => Err(()),
@@ -576,7 +603,7 @@ impl<'a> Compiler<'a> {
             Token::Super { .. } => Err(()),
             Token::This { .. } => Err(()),
             Token::True { .. } => {
-                self.literal();
+                self.literal(can_assign);
                 Ok(())
             },
             Token::Var { .. } => Err(()),
@@ -584,7 +611,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn infix_rule(&mut self, token: &Token) {
+    fn infix_rule(&mut self, token: &Token, can_assign: bool) {
         match token {
             Token::LParen { .. } => (),
             Token::RParen { .. } => (),
@@ -623,7 +650,7 @@ impl<'a> Compiler<'a> {
             | Token::Greater { .. }
             | Token::GreaterEql { .. }
             | Token::Less { .. }
-            | Token::LessEql { .. } => self.binary(),
+            | Token::LessEql { .. } => self.binary(can_assign),
         }
     }
 }
