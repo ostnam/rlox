@@ -1,10 +1,11 @@
 use crate::chunk::{Chunk, Instruction, OpCode, LoxVal};
 use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
 
+#[derive(Debug)]
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     result: Chunk,
-    previous: Option<Token>,
+    previous: Token,
     current: Option<Token>,
     had_error: bool,
     panic_mode: bool,
@@ -110,7 +111,7 @@ impl<'a> Compiler<'a> {
         Ok(Compiler {
             scanner,
             result: Chunk(Vec::new()),
-            previous: None,
+            previous: Token::LParen { line: 0 },
             current: None,
             had_error: false,
             panic_mode: false,
@@ -184,11 +185,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn advance(&mut self) {
-        self.previous = self.current.clone();
-        self.current_line = self.previous
-            .clone()
-            .map(|t| t.line())
-            .unwrap_or(0);
+        if let Some(t) = &self.current {
+            self.previous = t.clone();
+        }
+        self.current_line = self.previous.line();
         loop {
             match self.scanner.next() {
                 Some(Ok(tok)) => {
@@ -241,11 +241,7 @@ impl<'a> Compiler<'a> {
 
     fn parse_precedence(&mut self, precedence: PrecedenceLvl) {
         self.advance();
-        let mut previous = match &self.previous {
-            Some(t) => t.clone(),
-            None => return,
-        };
-        match self.prefix_rule(&previous) {
+        match self.prefix_rule(&self.previous.clone()) {
             Ok(_) => (),
             Err(_) => self.emit_error(&CompilationError::Raw{
                 text: String::from("Expected expression.")
@@ -258,11 +254,7 @@ impl<'a> Compiler<'a> {
         };
         while precedence <= PrecedenceLvl::from(&current) {
             self.advance();
-            previous = match &self.previous {
-                Some(t) => t.clone(),
-                None => return,
-            };
-            self.infix_rule(&previous);
+            self.infix_rule(&self.previous.clone());
             current = match &self.current {
                 Some(t) => t.clone(),
                 None => return,
@@ -271,7 +263,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn number(&mut self) {
-        if let Some(Token::NumLit { value, line }) = self.previous {
+        if let Token::NumLit { value, line } = self.previous {
             self.emit_instr(Instruction {
                 op: OpCode::Constant(LoxVal::Num(value)),
                 line,
@@ -279,8 +271,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn string(&mut self) {
-        if let Some(Token::StrLit { content, line }) = &self.previous {
+        if let Token::StrLit { content, line } = &self.previous {
             self.emit_instr(Instruction {
                 op: OpCode::Constant(LoxVal::Str(content.clone())),
                 line: *line,
@@ -301,11 +292,11 @@ impl<'a> Compiler<'a> {
         let op = self.previous.clone();
         self.parse_precedence(PrecedenceLvl::Unary);
         match op {
-            Some(Token::Minus { line }) => self.emit_instr(Instruction {
+            Token::Minus { line } => self.emit_instr(Instruction {
                 op: OpCode::Negate,
                 line,
             }),
-            Some(Token::Bang { line }) => self.emit_instr(Instruction {
+            Token::Bang { line } => self.emit_instr(Instruction {
                 op: OpCode::Not,
                 line,
             }),
@@ -327,7 +318,7 @@ impl<'a> Compiler<'a> {
     fn synchronize(&mut self) {
         self.panic_mode = false;
         while self.current.is_some() {
-            if matches!(self.previous, Some(Token::Semicolon { .. })) {
+            if matches!(self.previous, Token::Semicolon { .. }) {
                 return;
             }
             match self.current {
@@ -432,13 +423,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn binary(&mut self) {
-        let previous = match &self.previous {
-            Some(a) => a.clone(),
-            None => return,
-        };
-        self.parse_precedence(PrecedenceLvl::from(&previous).next());
+        let op = self.previous.clone();
+        self.parse_precedence(PrecedenceLvl::from(&self.previous).next());
 
-        match previous {
+        match op {
             Token::Plus { line } => 
                 self.emit_instr(Instruction {
                     op: OpCode::Add,
@@ -510,17 +498,17 @@ impl<'a> Compiler<'a> {
 
     fn literal(&mut self) {
         match self.previous {
-            Some(Token::True { line }) =>
+            Token::True { line } =>
                 self.emit_instr(Instruction {
                     op: OpCode::Constant(LoxVal::Bool(true)),
                     line,
                 }),
-            Some(Token::False { line }) =>
+            Token::False { line } =>
                 self.emit_instr(Instruction {
                     op: OpCode::Constant(LoxVal::Bool(false)),
                     line,
                 }),
-            Some(Token::Nil { line }) =>
+            Token::Nil { line } =>
                 self.emit_instr(Instruction {
                     op: OpCode::Constant(LoxVal::Nil),
                     line,
