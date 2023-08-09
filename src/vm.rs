@@ -22,6 +22,10 @@ pub enum VMError {
         line: u64,
         details: String, 
     },
+    UndefinedVariable {
+        line: u64,
+        name: String,
+    },
     TypeError {
         line: u64,
         expected: String,
@@ -97,6 +101,17 @@ impl<'a> VM<'a> {
                     (Some(rhs), Some(lhs)) => self.push_val(LoxVal::Bool(lhs == rhs)),
                     (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
                 }
+
+                OpCode::GetGlobal(var) => {
+                    match self.globals.get(var.as_str()) {
+                        Some(val) => self.push_val(val.clone()),
+                        None => return Err(VMError::UndefinedVariable {
+                            name: var.clone(),
+                            line: instr.line,
+                        }),
+                    }
+                }
+
                 OpCode::Greater => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l>r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
@@ -171,6 +186,17 @@ impl<'a> VM<'a> {
                 OpCode::Print => match self.pop_val() {
                     Some(val) => println!("{val}"),
                     _ => return Err(VMError::stack_exhausted(instr)),
+                }
+
+                OpCode::SetGlobal(var) => match self.pop_val() {
+                    Some(val) if self.globals.contains_key(var.as_str()) => {
+                        self.globals.insert(var.as_str(), val);
+                    },
+                    Some(_) => return Err(VMError::UndefinedVariable {
+                        line: 0,
+                        name: var.clone(),
+                    }),
+                    None => return Err(VMError::stack_exhausted(instr)),
                 }
 
                 OpCode::Substract => match (self.pop_val(), self.pop_val()) {

@@ -63,6 +63,7 @@ pub enum OpCode {
     DefineGlobal(String),
     Divide,
     Equal,
+    GetGlobal(String),
     Greater,
     Less,
     Multiply,
@@ -71,6 +72,7 @@ pub enum OpCode {
     Pop,
     Print,
     Return,
+    SetGlobal(String),
     Substract,
 }
 
@@ -88,6 +90,7 @@ impl Display for OpCode {
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
             OpCode::Divide => "DIVIDE".to_string(),
             OpCode::Equal => "EQUAL".to_string(),
+            OpCode::GetGlobal(name) => format!("GET VAR: {name}"),
             OpCode::Greater => "GREATER".to_string(),
             OpCode::Less => "LESS".to_string(),
             OpCode::Multiply => "MULTIPLY".to_string(),
@@ -96,6 +99,7 @@ impl Display for OpCode {
             OpCode::Pop => "POP".to_string(),
             OpCode::Print => "PRINT".to_string(),
             OpCode::Return => "RETURN".to_string(),
+            OpCode::SetGlobal(name) => format!("SET VAR: {name}"),
             OpCode::Substract => "SUBSTRACT".to_string(),
         };
         write!(f, "{}", name)
