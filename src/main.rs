@@ -42,4 +42,5 @@ fn run_file(path: String) {
         Ok(s) => s,
         Err(e) => panic!("Error reading source file at: {}, error: {}", path, e),
     };
+    run::run_program(&src).unwrap();
 }
