@@ -109,6 +109,7 @@ pub enum ScanError {
     UnknownCharacter,
 }
 
+#[derive(Debug)]
 pub struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     current_line: u64,
