@@ -7,11 +7,18 @@ pub struct VM<'a> {
     ip: usize,
     stack: Vec<LoxVal>,
     globals: HashMap<&'a str, LoxVal>,
+    last_val: LoxVal,
 }
 
 impl<'a> From<&'a Chunk> for VM<'a> {
     fn from(chunk: &'a Chunk) -> Self {
-        VM { chunk, ip: 0, stack: Vec::new(), globals: HashMap::new(), }
+        VM {
+            chunk,
+            ip: 0,
+            stack: Vec::new(),
+            globals: HashMap::new(),
+            last_val: LoxVal::Nil,
+        }
     }
 }
 
@@ -217,7 +224,7 @@ impl<'a> VM<'a> {
                 },
 
 
-                OpCode::Return => return Ok(self.pop_val().unwrap_or(LoxVal::Nil)),
+                OpCode::Return => return Ok(self.stack.pop().unwrap_or(self.last_val.clone())),
             }
         };
 
@@ -231,6 +238,7 @@ impl<'a> VM<'a> {
     }
 
     fn push_val(&mut self, val: LoxVal) {
+        self.last_val = val.clone();
         self.stack.push(val);
     }
 
