@@ -662,6 +662,10 @@ mod tests {
         Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
+    fn run_compiler(program: &str) -> Chunk {
+        Compiler::new(program).unwrap().compile().unwrap()
+    }
+
     #[test]
     fn compile_number() {
         assert_eq!(
