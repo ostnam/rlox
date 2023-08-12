@@ -279,3 +279,31 @@ fn test_print_stmt() {
         Ok(LoxVal::Num(50.0)),
     );
 }
+
+#[test]
+fn test_global_var() {
+    assert_eq!(
+        common::run_program("var x; x;"),
+        Ok(LoxVal::Nil),
+    );
+    assert_eq!(
+        common::run_program("var x = 1; x;"),
+        Ok(LoxVal::Num(1.0)),
+    );
+    assert_eq!(
+        common::run_program("var x = 10 * 3 + 3; x;"),
+        Ok(LoxVal::Num(33.0)),
+    );
+    assert_eq!(
+        common::run_program("var x = 1; x = 2; x;"),
+        Ok(LoxVal::Num(2.0)),
+    );
+    assert_eq!(
+        common::run_program("x;"),
+        Err(VMError::UndefinedVariable { line: 1, name: "x".to_string()}),
+    );
+    assert_eq!(
+        common::run_program("x = 10;"),
+        Err(VMError::UndefinedVariable { line: 0, name: "x".to_string()}),
+    );
+}
