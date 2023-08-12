@@ -152,7 +152,7 @@ impl<'a> Compiler<'a> {
             None => {
                 self.result.0.push(Instruction {
                     op: OpCode::Return,
-                    line: 0,
+                    line: self.current_line,
                 });
                 Ok(())
             }
@@ -668,7 +668,7 @@ mod tests {
             run_compiler_expr("10"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -679,7 +679,7 @@ mod tests {
             run_compiler_expr(r#""hello lox""#),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello lox".to_string())), line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -694,7 +694,7 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(30.0)), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         );
 
@@ -706,7 +706,7 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Str("lox".to_string())), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         );
     }
@@ -721,7 +721,7 @@ mod tests {
                 Instruction { op: OpCode::Substract, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(30.0)), line: 1 },
                 Instruction { op: OpCode::Substract, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -738,7 +738,7 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(4.0)), line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -750,7 +750,7 @@ mod tests {
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -764,7 +764,7 @@ mod tests {
                 Instruction { op: OpCode::Negate, line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
@@ -780,7 +780,7 @@ mod tests {
                 Instruction { op: OpCode::Constant(LoxVal::Num(3.0)), line: 1 },
                 Instruction { op: OpCode::Multiply, line: 1 },
                 Instruction { op: OpCode::Add, line: 1 },
-                Instruction { op: OpCode::Return, line: 0 },
+                Instruction { op: OpCode::Return, line: 1 },
             ])
         )
     }
