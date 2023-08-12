@@ -359,6 +359,7 @@ impl<'a> Compiler<'a> {
                 return;
             }
         };
+        self.advance();
         if self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
         } else {
