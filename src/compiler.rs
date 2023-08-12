@@ -789,4 +789,54 @@ mod tests {
             ])
         )
     }
+
+    #[test]
+    fn compile_expr_stmt() {
+        assert_eq!(
+            run_compiler("-1 + 2 * 3;"),
+            Ok(Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
+                Instruction { op: OpCode::Negate, line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(3.0)), line: 1 },
+                Instruction { op: OpCode::Multiply, line: 1 },
+                Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Pop, line: 1 },
+                Instruction { op: OpCode::Return, line: 1 },
+            ]))
+        )
+    }
+
+    #[test]
+    fn compile_print_stmt() {
+        assert_eq!(
+            run_compiler("print -1 + 2 * 3;"),
+            Ok(Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
+                Instruction { op: OpCode::Negate, line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(3.0)), line: 1 },
+                Instruction { op: OpCode::Multiply, line: 1 },
+                Instruction { op: OpCode::Add, line: 1 },
+                Instruction { op: OpCode::Print, line: 1 },
+                Instruction { op: OpCode::Return, line: 1 },
+            ]))
+        )
+    }
+
+    #[test]
+    fn compile_global_set() {
+        assert_eq!(
+            run_compiler("var x;"),
+            Ok(Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Nil), line: 1 },
+                Instruction { op: OpCode::DefineGlobal("x".to_string()), line: 1 },
+                Instruction { op: OpCode::Return, line: 1 },
+            ]))
+        );
+        assert_eq!(
+            run_compiler("a * b = 10;"),
+            Err(()),
+        );
+    }
 }
