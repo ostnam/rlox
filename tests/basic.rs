@@ -258,3 +258,24 @@ fn test_cmp() {
         Err(VMError::TypeError { .. }),
     ));
 }
+
+#[test]
+fn test_expr_stmt() {
+    assert_eq!(
+        common::run_program("20 + 20;"),
+        Ok(LoxVal::Num(40.0)),
+    );
+}
+
+#[test]
+fn test_print_stmt() {
+    assert_eq!(
+        common::run_program("print 20;"),
+        Ok(LoxVal::Num(20.0)),
+        // should be the last value pushed to the stack
+    );
+    assert_eq!(
+        common::run_program("print 20 + 30;"),
+        Ok(LoxVal::Num(50.0)),
+    );
+}

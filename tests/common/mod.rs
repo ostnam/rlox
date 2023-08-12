@@ -10,3 +10,12 @@ pub fn run_expr(src: &str) -> Result<LoxVal, VMError> {
 
     VM::from(&chunk).interpret()
 }
+
+pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
+    let chunk = Compiler::new(src)
+        .unwrap()
+        .compile()
+        .unwrap();
+
+    VM::from(&chunk).interpret()
+}
