@@ -658,14 +658,14 @@ impl<'a> Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn run_compiler(program: &str) -> Chunk {
+    fn run_compiler_expr(program: &str) -> Chunk {
         Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
     #[test]
     fn compile_number() {
         assert_eq!(
-            run_compiler("10"),
+            run_compiler_expr("10"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Return, line: 0 },
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn compile_string() {
         assert_eq!(
-            run_compiler(r#""hello lox""#),
+            run_compiler_expr(r#""hello lox""#),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello lox".to_string())), line: 1 },
                 Instruction { op: OpCode::Return, line: 0 },
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn compile_add() {
         assert_eq!(
-            run_compiler("10 + 20 + 30"),
+            run_compiler_expr("10 + 20 + 30"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -699,7 +699,7 @@ mod tests {
         );
 
         assert_eq!(
-            run_compiler(r#""hello" + " " + "lox""#),
+            run_compiler_expr(r#""hello" + " " + "lox""#),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello".to_string())), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Str(" ".to_string())), line: 1 },
@@ -714,7 +714,7 @@ mod tests {
     #[test]
     fn compile_sub() {
         assert_eq!(
-            run_compiler("10 - 20 - 30"),
+            run_compiler_expr("10 - 20 - 30"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -729,7 +729,7 @@ mod tests {
     #[test]
     fn compile_add_mult() {
         assert_eq!(
-            run_compiler("1 + 2 * 3 + 4"),
+            run_compiler_expr("1 + 2 * 3 + 4"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
@@ -746,7 +746,7 @@ mod tests {
     #[test]
     fn compile_minus() {
         assert_eq!(
-            run_compiler("-1"),
+            run_compiler_expr("-1"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -758,7 +758,7 @@ mod tests {
     #[test]
     fn compile_multiple_prefix() {
         assert_eq!(
-            run_compiler("---1"),
+            run_compiler_expr("---1"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -772,7 +772,7 @@ mod tests {
     #[test]
     fn compile_prefix_and_infix() {
         assert_eq!(
-            run_compiler("-1 + 2 * 3"),
+            run_compiler_expr("-1 + 2 * 3"),
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
