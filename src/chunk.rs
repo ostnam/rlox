@@ -39,7 +39,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Bool(b) => write!(f, "Bool: {b}"),
             LoxVal::Nil     => write!(f, "nil"),
             LoxVal::Num(n)  => write!(f, "Num: {n}"),
-            LoxVal::Str(s)  => write!(f, "Str: {s}"),
+            LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
         }
     }
 }
@@ -54,7 +54,6 @@ impl std::fmt::Display for LoxVal {
         }
     }
 }
-
 
 #[derive(Debug, PartialEq)]
 pub enum OpCode {
@@ -122,5 +121,74 @@ impl Chunk {
             };
             println!("{line_marker}:{}", chunk.op);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loxval_display() {
+        assert_eq!(
+            format!("{}", LoxVal::Bool(true)),
+            "true".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Bool(false)),
+            "false".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Nil),
+            "nil".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Num(3.0)),
+            "3".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Num(3.14)),
+            "3.14".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Num(-3.14)),
+            "-3.14".to_string(),
+        );
+        assert_eq!(
+            format!("{}", LoxVal::Str("hello world!".to_string())),
+            "hello world!".to_string(),
+        );
+    }
+
+    #[test]
+    fn loxval_debug() {
+        assert_eq!(
+            format!("{:?}", LoxVal::Bool(true)),
+            "Bool: true".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Bool(false)),
+            "Bool: false".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Nil),
+            "nil".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Num(3.0)),
+            "Num: 3".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Num(3.14)),
+            "Num: 3.14".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Num(-3.14)),
+            "Num: -3.14".to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", LoxVal::Str("hello world!".to_string())),
+            r#"Str: "hello world!""#.to_string(),
+        );
     }
 }
