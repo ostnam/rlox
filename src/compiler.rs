@@ -663,8 +663,8 @@ mod tests {
         Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
-    fn run_compiler(program: &str) -> Chunk {
-        Compiler::new(program).unwrap().compile().unwrap()
+    fn run_compiler(program: &str) -> Result<Chunk, ()> {
+        Compiler::new(program).unwrap().compile()
     }
 
     #[test]
