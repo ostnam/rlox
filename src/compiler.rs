@@ -119,6 +119,9 @@ enum CompilationError {
         var_name: String,
         line: u64,
     },
+    IfStmtMissingParens {
+        line: u64,
+    }
 }
 
 impl<'a> Compiler<'a> {
@@ -202,7 +205,10 @@ impl<'a> Compiler<'a> {
                     println!("Unknown character"),
             }
             CompilationError::VariableUsedWhileInit { var_name, line } => {
-                    println!("[{line}]: Variable {var_name} used during its initialization.");
+                println!("[{line}]: Variable {var_name} used during its initialization.");
+        }
+            CompilationError::IfStmtMissingParens { line } => {
+                println!("[{line}]: Missing parens around the condition of an if statement.");
             }
         }
     }
@@ -463,7 +469,7 @@ impl<'a> Compiler<'a> {
             })
         } else {
             let prev = self.locals.pop().expect("BUG: local was removed from the local vec before the end of its declaration");
-            self.locals.push( Local { initialized: true, ..prev });
+            self.locals.push(Local { initialized: true, ..prev });
         }
     }
 
@@ -474,6 +480,8 @@ impl<'a> Compiler<'a> {
             self.begin_scope();
             self.block();
             self.end_scope();
+        } else if self.matches(|t| matches!(t, Token::If { .. })) {
+            self.if_statement();
         } else {
             self.expr_statement();
         }
@@ -509,6 +517,61 @@ impl<'a> Compiler<'a> {
             |t| matches!(t, Token::RBrace { .. }),
             &CompilationError::UnclosedBlock { line: self.current_line },
         );
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(
+            |t| matches!(t, Token::LParen { .. }),
+            &CompilationError::IfStmtMissingParens {
+                line: self.current_line,
+            }
+        );
+        self.expression();
+        self.consume(
+            |t| matches!(t, Token::RParen { .. }),
+            &CompilationError::IfStmtMissingParens {
+                line: self.current_line,
+            }
+        );
+
+        let false_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_instr(Instruction {
+            op: OpCode::Pop,
+            line: self.current_line,
+        });
+        self.statement();
+        let body_jmp = self.emit_jump(OpCode::Jump(0));
+
+        // condition evaluating to false jumps here
+        self.patch_jump(false_jmp);
+        self.emit_instr(Instruction {
+            op: OpCode::Pop,
+            line: self.current_line,
+        });
+        if self.matches(|t| matches!(t, Token::Else { .. })) {
+            self.statement();
+        }
+        self.patch_jump(body_jmp);
+    }
+
+    fn emit_jump(&mut self, jmp: OpCode) -> usize {
+        self.emit_instr(Instruction { op: jmp, line: self.current_line });
+        self.result.0.len() - 1
+    }
+
+    fn patch_jump(&mut self, jmp_idx: usize) {
+        let tgt = self.result.0.len();
+        match self.result.0.get_mut(jmp_idx) {
+            Some(x@Instruction { op: OpCode::JumpIfFalse(_), .. }) => {
+                x.op = OpCode::JumpIfFalse(tgt);
+            },
+            Some(x@Instruction { op: OpCode::Jump(_), .. }) => {
+                x.op = OpCode::Jump(tgt);
+            },
+            _ => self.emit_error(&CompilationError::Raw {
+                text: format!("[{}]: error patching jump", self.current_line),
+            })
+        }
     }
 
     fn expr_statement(&mut self) {
@@ -997,5 +1060,26 @@ mod tests {
             "#),
             Err(_),
         ));
+    }
+
+    #[test]
+    fn compile_if_stmt() {
+        assert_eq!(
+            run_compiler(r#"
+                if (true) {
+                    10;
+                }
+            "#),
+            Ok(Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Bool(true)), line: 2 },
+                Instruction { op: OpCode::JumpIfFalse(6), line: 2 },
+                Instruction { op: OpCode::Pop, line: 2 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
+                Instruction { op: OpCode::Pop, line: 3 },
+                Instruction { op: OpCode::Jump(7), line: 4 },
+                Instruction { op: OpCode::Pop, line: 4 },
+                Instruction { op: OpCode::Return, line: 4 },
+            ])),
+        );
     }
 }

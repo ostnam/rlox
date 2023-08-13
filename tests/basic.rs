@@ -344,3 +344,47 @@ fn test_local_var() {
         Ok(LoxVal::Num(10.0)),
     );
 }
+
+#[test]
+fn test_if_stmt() {
+    assert_eq!(
+        common::run_program(r#"
+            if (1 > 0) {
+                10;
+            }
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            if (1 < 0) {
+                1;
+            } else {
+                2;
+            }
+        "#),
+        Ok(LoxVal::Num(2.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            if (1 < 0) {
+                1;
+            } else if (false) {
+                2;
+            } else {
+                3;
+            }
+        "#),
+        Ok(LoxVal::Num(3.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 1;
+            if (true) {
+                var x = 2;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(1.0)),
+    );
+}
