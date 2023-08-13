@@ -24,6 +24,9 @@ impl<'a> From<&'a Chunk> for VM<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VMError {
+    LocalResolutionBug {
+        depth: usize,
+    },
     EndedWithNoReturn,
     StackExhausted {
         line: u64,
@@ -119,6 +122,15 @@ impl<'a> VM<'a> {
                     }
                 }
 
+                OpCode::GetLocal(depth) => {
+                    match self.stack.get(*depth) {
+                        Some(val) => self.stack.push(val.clone()),
+                        None => return Err(VMError::LocalResolutionBug {
+                            depth: *depth,
+                        }),
+                    }
+                }
+
                 OpCode::Greater => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l>r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
@@ -205,6 +217,22 @@ impl<'a> VM<'a> {
                     }),
                     None => return Err(VMError::stack_exhausted(instr)),
                 }
+
+                OpCode::SetLocal(pos) => {
+                    if *pos >= self.stack.len() {
+                        return Err(
+                            VMError::LocalResolutionBug { depth: *pos }
+                        );
+                    }
+                    match self.peek(0) {
+                        Some(val) => self.stack[*pos] = val.clone(),
+                        None => return Err(VMError::StackExhausted {
+                                line: 0,
+                                details: format!("Tried to set variable at pos {pos}, but peek returned None."),
+                        }),
+                    }
+                }
+
 
                 OpCode::Substract => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
