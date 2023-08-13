@@ -10,6 +10,15 @@ pub struct Compiler<'a> {
     had_error: bool,
     panic_mode: bool,
     current_line: u64,
+    locals: Vec<Local>,
+    current_scope_depth: i32,
+}
+
+#[derive(Debug)]
+struct Local {
+    name: String,
+    depth: i32,
+    initialized: bool,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -100,8 +109,15 @@ enum CompilationError {
     },
     ScanError(scanner::ScanError),
     TokensLeft,
+    UnclosedBlock {
+        line: u64
+    },
     UnclosedParens {
         line: u64
+    },
+    VariableUsedWhileInit {
+        var_name: String,
+        line: u64,
     },
 }
 
@@ -116,6 +132,8 @@ impl<'a> Compiler<'a> {
             had_error: false,
             panic_mode: false,
             current_line: 0,
+            locals: Vec::new(),
+            current_scope_depth: 0,
         })
     }
 
@@ -170,6 +188,8 @@ impl<'a> Compiler<'a> {
         match err {
             CompilationError::TokensLeft => 
                 println!("BUG: tokens left over"),
+            CompilationError::UnclosedBlock { line } =>
+                println!("[{line}]: unclosed block"),
             CompilationError::UnclosedParens { line } =>
                 println!("[{line}]: unclosed parens"),
             CompilationError::Raw { text } => println!("{text}"),
@@ -180,6 +200,9 @@ impl<'a> Compiler<'a> {
                     println!("Unclosed string literal"),
                 ScanError::UnknownCharacter =>
                     println!("Unknown character"),
+            }
+            CompilationError::VariableUsedWhileInit { var_name, line } => {
+                    println!("[{line}]: Variable {var_name} used during its initialization.");
             }
         }
     }
@@ -233,6 +256,63 @@ impl<'a> Compiler<'a> {
             }
             _ => false,
         }
+    }
+
+    fn begin_scope(&mut self) {
+        self.current_scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.current_scope_depth -= 1;
+        let mut num_valid_locals = self.locals.len();
+        let start_pos = if self.locals.len() > 0 {
+            self.locals.len()
+        } else {
+            0
+        };
+        for idx in start_pos..=0 {
+            match self.locals.get(idx) {
+                None => continue,
+                Some(var) => {
+                    if var.depth <= self.current_scope_depth {
+                        break;
+                    }
+                    num_valid_locals -= 1;
+                    self.emit_instr(Instruction {
+                        op: OpCode::Pop,
+                        line: self.current_line,
+                    });
+                }
+            }
+        }
+        self.locals.truncate(num_valid_locals);
+    }
+
+    /// Takes the name of a local variable, and returns `Some` of the index
+    /// on the stack of that variable at runtime if it is a declared local
+    /// variable, and `None` otherwise.
+    fn resolve_local(&mut self, name: &str) -> Option<usize> {
+        // to avoid an underflow when we reach the for loop
+        if self.locals.len() == 0 {
+            return None;
+        }
+        for idx in (self.locals.len() - 1)..=0 {
+            match self.locals.get(idx) {
+                None => continue,
+                Some(var) if var.name == name => {
+                    if var.initialized {
+                        return Some(idx);
+                    } else {
+                        self.emit_error(&CompilationError::VariableUsedWhileInit {
+                            var_name: name.to_string(),
+                            line: self.current_line,
+                        });
+                    }
+                }
+                Some(_) => continue,
+            }
+        }
+        None
     }
 
     fn emit_instr(&mut self, instr: Instruction) {
@@ -360,6 +440,13 @@ impl<'a> Compiler<'a> {
             }
         };
         self.advance();
+        if self.current_scope_depth > 0 {
+            self.locals.push(Local {
+                    name: var_name.clone(),
+                    depth: self.current_scope_depth,
+                    initialized: false,
+            });
+        }
         if self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
         } else {
@@ -374,15 +461,24 @@ impl<'a> Compiler<'a> {
                 text: format!("[{}]: Missing semicolon after variable declaration.", self.current_line),
             },
         );
-        self.emit_instr(Instruction {
-            op: OpCode::DefineGlobal(var_name),
-            line,
-        })
+        if self.current_scope_depth == 0 {
+            self.emit_instr(Instruction {
+                op: OpCode::DefineGlobal(var_name),
+                line,
+            })
+        } else {
+            let prev = self.locals.pop().expect("BUG: local was removed from the local vec before the end of its declaration");
+            self.locals.push( Local { initialized: true, ..prev });
+        }
     }
 
     fn statement(&mut self) {
         if self.matches(|t| matches!(t, Token::Print { .. })) {
             self.print_statement();
+        } else if self.matches(|t| matches!(t, Token::LBrace { .. })) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expr_statement();
         }
@@ -405,6 +501,19 @@ impl<'a> Compiler<'a> {
                 line: self.current_line,
             }
         )
+    }
+
+    fn block(&mut self) {
+        loop {
+            match self.current {
+                None | Some(Token::RBrace { .. }) => break,
+                _ => self.declaration(),
+            }
+        }
+        self.consume(
+            |t| matches!(t, Token::RBrace { .. }),
+            &CompilationError::UnclosedBlock { line: self.current_line },
+        );
     }
 
     fn expr_statement(&mut self) {
@@ -527,17 +636,35 @@ impl<'a> Compiler<'a> {
 
     fn variable(&mut self, can_assign: bool) {
         if let Token::Identifier { name, line } = self.previous.clone() {
-            if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
-                self.expression();
-                self.emit_instr(Instruction {
-                    op: OpCode::SetGlobal(name.clone()),
-                    line,
-                })
-            } else {
-                self.emit_instr(Instruction {
-                    op: OpCode::GetGlobal(name),
-                    line
-                })
+            match self.resolve_local(&name) {
+                Some(pos) => {
+                    if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+                        self.expression();
+                        self.emit_instr(Instruction {
+                            op: OpCode::SetLocal(pos),
+                            line,
+                        })
+                    } else {
+                        self.emit_instr(Instruction {
+                            op: OpCode::GetLocal(pos),
+                            line
+                        })
+                    }
+                },
+                None => {
+                    if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+                        self.expression();
+                        self.emit_instr(Instruction {
+                            op: OpCode::SetGlobal(name.clone()),
+                            line,
+                        })
+                    } else {
+                        self.emit_instr(Instruction {
+                            op: OpCode::GetGlobal(name),
+                            line
+                        })
+                    }
+                }
             }
         }
     }
