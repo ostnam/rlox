@@ -124,7 +124,7 @@ impl<'a> VM<'a> {
 
                 OpCode::GetLocal(depth) => {
                     match self.stack.get(*depth) {
-                        Some(val) => self.stack.push(val.clone()),
+                        Some(val) => self.push_val(val.clone()),
                         None => return Err(VMError::LocalResolutionBug {
                             depth: *depth,
                         }),
