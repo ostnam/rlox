@@ -55,7 +55,11 @@ impl VMError {
 
 impl<'a> VM<'a> {
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
-        for instr in &self.chunk.0 {
+        loop {
+            let instr = match self.chunk.0.get(self.ip) {
+                Some(i) => i,
+                None => break,
+            };
             match &instr.op {
                 OpCode::Add => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l+r)),
@@ -254,6 +258,8 @@ impl<'a> VM<'a> {
 
                 OpCode::Return => return Ok(self.stack.pop().unwrap_or(self.last_val.clone())),
             }
+
+            self.ip += 1;
         };
 
         Err(VMError::EndedWithNoReturn)
