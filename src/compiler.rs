@@ -265,12 +265,7 @@ impl<'a> Compiler<'a> {
     fn end_scope(&mut self) {
         self.current_scope_depth -= 1;
         let mut num_valid_locals = self.locals.len();
-        let start_pos = if self.locals.len() > 0 {
-            self.locals.len()
-        } else {
-            0
-        };
-        for idx in start_pos..=0 {
+        for idx in (0..self.locals.len()).rev() {
             match self.locals.get(idx) {
                 None => continue,
                 Some(var) => {
@@ -296,7 +291,7 @@ impl<'a> Compiler<'a> {
         if self.locals.len() == 0 {
             return None;
         }
-        for idx in (self.locals.len() - 1)..=0 {
+        for idx in (0..self.locals.len()).rev() {
             match self.locals.get(idx) {
                 None => continue,
                 Some(var) if var.name == name => {
