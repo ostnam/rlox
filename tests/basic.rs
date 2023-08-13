@@ -307,3 +307,40 @@ fn test_global_var() {
         Err(VMError::UndefinedVariable { line: 0, name: "x".to_string()}),
     );
 }
+
+#[test]
+fn test_local_var() {
+    assert_eq!(
+        common::run_program(r#"
+            {
+                var x = 10;
+                x;
+            }
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            {
+                var x = 10;
+                20;
+                {
+                    x;
+                }
+            }
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            {
+                var x = 10;
+                {
+                    var x = 20;
+                }
+                x;
+            }
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+}

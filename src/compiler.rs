@@ -961,4 +961,41 @@ mod tests {
             Err(()),
         );
     }
+
+    #[test]
+    fn compile_local_var() {
+        assert_eq!(
+            run_compiler(r#"
+                {
+                    var x = 10;
+                    {
+                        var y = x;
+                        y + 1;
+                    }
+                }
+            "#),
+            Ok(Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
+                Instruction { op: OpCode::GetLocal(0), line: 5 },
+                Instruction { op: OpCode::GetLocal(1), line: 6 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 6 },
+                Instruction { op: OpCode::Add, line: 6 },
+                Instruction { op: OpCode::Pop, line: 6 },
+                Instruction { op: OpCode::Pop, line: 7 },  // pop y
+                Instruction { op: OpCode::Pop, line: 8 },  // pop x
+                Instruction { op: OpCode::Return, line: 8 },
+            ])),
+        );
+        assert!(matches!(
+            run_compiler(r#"
+                {
+                    var x = 10;
+                    {
+                        var x = x;
+                    }
+                }
+            "#),
+            Err(_),
+        ));
+    }
 }
