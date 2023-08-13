@@ -151,6 +151,22 @@ impl<'a> VM<'a> {
                     }),
                     (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
                 },
+
+                OpCode::Jump(tgt) => {
+                    self.ip = *tgt;
+                    continue;  // to avoid ip += 1 at the end of the match
+                }
+
+                OpCode::JumpIfFalse(tgt) => {
+                    match self.peek(0).map(|v| v.clone().cast_to_bool()) {
+                        Some(LoxVal::Bool(false)) => {
+                            self.ip = *tgt;
+                            continue;
+                        }
+                        _ => (),
+                    }
+                },
+
                 OpCode::Less => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l<r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
