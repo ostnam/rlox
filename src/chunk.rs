@@ -6,16 +6,18 @@ pub enum LoxVal {
     Nil,
     Num(f64),
     Str(String),
+    Function(Function),
 }
 
 impl LoxVal {
     pub fn type_name(&self) -> String {
     match self {
-            LoxVal::Bool(_) => "bool",
-            LoxVal::Nil     => "nil",
-            LoxVal::Num(_)  => "number",
-            LoxVal::Str(_)  => "string",
-        }.to_string()
+            LoxVal::Bool(_) => "bool".to_string(),
+            LoxVal::Nil     => "nil".to_string(),
+            LoxVal::Num(_)  => "number".to_string(),
+            LoxVal::Str(_)  => "string".to_string(),
+            LoxVal::Function(_)  => format!("function"),
+        }
     }
 
     pub fn cast_to_bool(self) -> LoxVal {
@@ -40,6 +42,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Nil     => write!(f, "nil"),
             LoxVal::Num(n)  => write!(f, "Num: {n}"),
             LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
+            LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
         }
     }
 }
@@ -51,6 +54,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Nil     => write!(f, "nil"),
             LoxVal::Num(n)  => write!(f, "{n}"),
             LoxVal::Str(s)  => write!(f, "{s}"),
+            LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
         }
     }
 }
@@ -115,7 +119,7 @@ impl Display for OpCode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chunk (pub Vec<Instruction>);
 
 impl Chunk {
@@ -132,6 +136,29 @@ impl Chunk {
             println!("{line_marker}:{}", chunk.op);
         }
     }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Function {
+    pub arity: u8,
+    pub chunk: Chunk,
+    pub name: String,
+}
+
+impl std::fmt::Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "function {}:", self.name)?;
+        writeln!(f, "arity {}:", self.arity)?;
+        for instr in &self.chunk.0 {
+            writeln!(f, "{instr:?}")?;
+        }
+        write!(f, "")
+    }
+}
+
+pub enum FunctionType {
+    Regular,
+    Script,
 }
 
 #[cfg(test)]
