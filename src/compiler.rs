@@ -1,10 +1,9 @@
-use crate::chunk::{Chunk, Instruction, OpCode, LoxVal};
+use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType};
 use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
 
 #[derive(Debug)]
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
-    result: Chunk,
     previous: Token,
     current: Option<Token>,
     had_error: bool,
@@ -12,6 +11,9 @@ pub struct Compiler<'a> {
     current_line: u64,
     locals: Vec<Local>,
     current_scope_depth: i32,
+    functions: Vec<Function>,
+    current_function: usize,
+    current_function_type: FunctionType,
 }
 
 #[derive(Debug)]
@@ -134,20 +136,27 @@ enum CompilationError {
 impl<'a> Compiler<'a> {
     pub fn new(src: &'a str) -> Result<Self, ScannerInitError> {
         let scanner = Scanner::new(src)?;
+        let main = Function {
+            arity: 0,
+            chunk: Chunk::default(),
+            name: "main".to_string(),
+        };
         Ok(Compiler {
             scanner,
-            result: Chunk(Vec::new()),
             previous: Token::LParen { line: 0 },
             current: None,
             had_error: false,
             panic_mode: false,
             current_line: 0,
-            locals: Vec::new(),
+            locals: vec![],
             current_scope_depth: 0,
+            functions: vec![main],
+            current_function: 0,
+            current_function_type: FunctionType::Script,
         })
     }
 
-    pub fn compile(mut self) -> Result<Chunk, ()> {
+    pub fn compile(mut self) -> Result<Vec<Function>, ()> {
         self.advance();
         while self.current.is_some() {
             self.declaration();
@@ -157,12 +166,12 @@ impl<'a> Compiler<'a> {
         }
 
         match self.had_error {
-            false => Ok(self.result),
+            false => Ok(self.functions),
             true => Err(()),
         }
     }
 
-    pub fn compile_expr(mut self) -> Result<Chunk, ()> {
+    pub fn compile_expr(mut self) -> Result<Vec<Function>, ()> {
         self.advance();
         self.expression();
         if let Err(e) = self.end_compilation() {
@@ -170,7 +179,7 @@ impl<'a> Compiler<'a> {
         }
 
         match self.had_error {
-            false => Ok(self.result),
+            false => Ok(self.functions),
             true => Err(()),
         }
     }
@@ -178,7 +187,7 @@ impl<'a> Compiler<'a> {
     fn end_compilation(&mut self) -> Result<(), CompilationError> {
         match self.scanner.next() {
             None => {
-                self.result.0.push(Instruction {
+                self.emit_instr(Instruction  {
                     op: OpCode::Return,
                     line: self.current_line,
                 });
@@ -329,8 +338,20 @@ impl<'a> Compiler<'a> {
         None
     }
 
+    fn get_next_instr_idx(&self) -> usize {
+        self.functions
+            .get(self.current_function)
+            .expect(
+                &format!(
+                    "BUG: self.current_function has value {} but only {} functions are listed.",
+                    self.current_function,
+                    self.functions.len(),
+            ))
+            .chunk.0.len()
+    }
+
     fn emit_instr(&mut self, instr: Instruction) {
-        self.result.0.push(instr)
+        self.functions.get_mut(self.current_function).map(|f| f.chunk.0.push(instr));
     }
 
     fn parse_precedence(&mut self, precedence: PrecedenceLvl) {
@@ -572,7 +593,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.result.0.len();
+        let loop_start = self.get_next_instr_idx();
         self.consume(
             |t| matches!(t, Token::LParen { .. }),
             &CompilationError::WhileStmtMissingParens { line: self.current_line }
@@ -604,7 +625,7 @@ impl<'a> Compiler<'a> {
         }
 
         // condition
-        let mut loop_start = self.result.0.len();
+        let mut loop_start = self.get_next_instr_idx();
         let mut exit_jmp = None;
         if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
             self.expression();
@@ -624,7 +645,7 @@ impl<'a> Compiler<'a> {
         // update
         if !self.matches(|t| matches!(t, Token::RParen { .. })) {
             let body_jump = self.emit_jump(OpCode::Jump(0));
-            let update_start = self.result.0.len();
+            let update_start = self.get_next_instr_idx();
             self.expression();
             self.emit_instr(Instruction {
                 op: OpCode::Pop,
@@ -653,7 +674,7 @@ impl<'a> Compiler<'a> {
 
     fn emit_jump(&mut self, jmp: OpCode) -> usize {
         self.emit_instr(Instruction { op: jmp, line: self.current_line });
-        self.result.0.len() - 1
+        self.get_next_instr_idx() - 1
     }
 
     fn emit_loop_jump(&mut self, tgt: usize) {
@@ -661,8 +682,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn patch_jump(&mut self, jmp_idx: usize) {
-        let tgt = self.result.0.len();
-        match self.result.0.get_mut(jmp_idx) {
+        let tgt = self.get_next_instr_idx();
+        let instr = self
+            .functions
+            .get_mut(self.current_function)
+            .and_then(|f| f.chunk.0.get_mut(jmp_idx));
+        match instr {
             Some(x@Instruction { op: OpCode::JumpIfFalse(_), .. }) => {
                 x.op = OpCode::JumpIfFalse(tgt);
             },
@@ -672,9 +697,16 @@ impl<'a> Compiler<'a> {
             Some(x@Instruction { op: OpCode::JumpIfTrue(_), .. }) => {
                 x.op = OpCode::JumpIfTrue(tgt);
             },
-            Some(_) => self.emit_error(&CompilationError::Raw {
-                text: format!("[{}]: BUG: error patching jump, unhandled jump kind: {:?}", self.current_line, self.result.0[jmp_idx].clone()),
-            }),
+            Some(other) => {
+                let copy = other.clone();
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: BUG: error patching jump, unhandled jump kind: {:?} ",
+                        self.current_line,
+                        copy,
+                    ),
+                })
+            },
             None => self.emit_error(&CompilationError::Raw {
                 text: format!("[{}]: BUG: error patching jump, incorrect jump index: {jmp_idx}", self.current_line),
             })
@@ -966,18 +998,18 @@ impl<'a> Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn run_compiler_expr(program: &str) -> Chunk {
+    fn run_compiler_expr(program: &str) -> Vec<Function> {
         Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
-    fn run_compiler(program: &str) -> Result<Chunk, ()> {
+    fn run_compiler(program: &str) -> Result<Vec<Function>, ()> {
         Compiler::new(program).unwrap().compile()
     }
 
     #[test]
     fn compile_number() {
         assert_eq!(
-            run_compiler_expr("10"),
+            run_compiler_expr("10")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
@@ -988,7 +1020,7 @@ mod tests {
     #[test]
     fn compile_string() {
         assert_eq!(
-            run_compiler_expr(r#""hello lox""#),
+            run_compiler_expr(r#""hello lox""#)[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello lox".to_string())), line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
@@ -999,7 +1031,7 @@ mod tests {
     #[test]
     fn compile_add() {
         assert_eq!(
-            run_compiler_expr("10 + 20 + 30"),
+            run_compiler_expr("10 + 20 + 30")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -1011,7 +1043,7 @@ mod tests {
         );
 
         assert_eq!(
-            run_compiler_expr(r#""hello" + " " + "lox""#),
+            run_compiler_expr(r#""hello" + " " + "lox""#)[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello".to_string())), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Str(" ".to_string())), line: 1 },
@@ -1026,7 +1058,7 @@ mod tests {
     #[test]
     fn compile_sub() {
         assert_eq!(
-            run_compiler_expr("10 - 20 - 30"),
+            run_compiler_expr("10 - 20 - 30")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -1041,7 +1073,7 @@ mod tests {
     #[test]
     fn compile_add_mult() {
         assert_eq!(
-            run_compiler_expr("1 + 2 * 3 + 4"),
+            run_compiler_expr("1 + 2 * 3 + 4")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
@@ -1058,7 +1090,7 @@ mod tests {
     #[test]
     fn compile_minus() {
         assert_eq!(
-            run_compiler_expr("-1"),
+            run_compiler_expr("-1")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1070,7 +1102,7 @@ mod tests {
     #[test]
     fn compile_multiple_prefix() {
         assert_eq!(
-            run_compiler_expr("---1"),
+            run_compiler_expr("---1")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1084,7 +1116,7 @@ mod tests {
     #[test]
     fn compile_prefix_and_infix() {
         assert_eq!(
-            run_compiler_expr("-1 + 2 * 3"),
+            run_compiler_expr("-1 + 2 * 3")[0].chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1100,8 +1132,8 @@ mod tests {
     #[test]
     fn compile_expr_stmt() {
         assert_eq!(
-            run_compiler("-1 + 2 * 3;"),
-            Ok(Chunk(vec![
+            run_compiler("-1 + 2 * 3;").unwrap()[0].chunk,
+            Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
@@ -1110,15 +1142,15 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Pop, line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
-            ]))
+            ])
         )
     }
 
     #[test]
     fn compile_print_stmt() {
         assert_eq!(
-            run_compiler("print -1 + 2 * 3;"),
-            Ok(Chunk(vec![
+            run_compiler("print -1 + 2 * 3;").unwrap()[0].chunk,
+            Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
@@ -1127,19 +1159,19 @@ mod tests {
                 Instruction { op: OpCode::Add, line: 1 },
                 Instruction { op: OpCode::Print, line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
-            ]))
+            ])
         )
     }
 
     #[test]
     fn compile_global_set() {
         assert_eq!(
-            run_compiler("var x;"),
-            Ok(Chunk(vec![
+            run_compiler("var x;").unwrap()[0].chunk,
+            Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Nil), line: 1 },
                 Instruction { op: OpCode::DefineGlobal("x".to_string()), line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
-            ]))
+            ])
         );
         assert_eq!(
             run_compiler("a * b = 10;"),
@@ -1158,8 +1190,8 @@ mod tests {
                         y + 1;
                     }
                 }
-            "#),
-            Ok(Chunk(vec![
+            "#).unwrap()[0].chunk,
+            Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
                 Instruction { op: OpCode::GetLocal(0), line: 5 },
                 Instruction { op: OpCode::GetLocal(1), line: 6 },
@@ -1169,7 +1201,7 @@ mod tests {
                 Instruction { op: OpCode::Pop, line: 7 },  // pop y
                 Instruction { op: OpCode::Pop, line: 8 },  // pop x
                 Instruction { op: OpCode::Return, line: 8 },
-            ])),
+            ]),
         );
         assert!(matches!(
             run_compiler(r#"
@@ -1191,8 +1223,8 @@ mod tests {
                 if (true) {
                     10;
                 }
-            "#),
-            Ok(Chunk(vec![
+            "#).unwrap()[0].chunk,
+            Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Bool(true)), line: 2 },
                 Instruction { op: OpCode::JumpIfFalse(6), line: 2 },
                 Instruction { op: OpCode::Pop, line: 2 },
@@ -1201,7 +1233,7 @@ mod tests {
                 Instruction { op: OpCode::Jump(7), line: 4 },
                 Instruction { op: OpCode::Pop, line: 4 },
                 Instruction { op: OpCode::Return, line: 4 },
-            ])),
+            ]),
         );
     }
 
@@ -1213,8 +1245,8 @@ mod tests {
                 for (var y = 0; y < 10; y = y + 1) {
                     x = y;
                 }
-            "#),
-            Ok(Chunk(vec![
+            "#).unwrap()[0].chunk,
+            Chunk(vec![
                 // line 1
                 Instruction { op: OpCode::Constant(LoxVal::Num(0.0)), line: 2 },
                 Instruction { op: OpCode::DefineGlobal("x".to_string()), line: 2 },
@@ -1247,7 +1279,7 @@ mod tests {
                 Instruction { op: OpCode::Pop, line: 5 },
                 Instruction { op: OpCode::Pop, line: 5 },
                 Instruction { op: OpCode::Return, line: 5 },
-            ])),
+            ]),
         );
     }
 }

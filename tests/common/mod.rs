@@ -8,7 +8,7 @@ pub fn run_expr(src: &str) -> Result<LoxVal, VMError> {
         .compile_expr()
         .unwrap();
 
-    VM::from(&chunk).interpret()
+    VM::from(chunk).interpret()
 }
 
 pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
@@ -17,5 +17,5 @@ pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
         .compile()
         .unwrap();
 
-    VM::from(&chunk).interpret()
+    VM::from(chunk).interpret()
 }

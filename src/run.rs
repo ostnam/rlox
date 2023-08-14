@@ -8,5 +8,5 @@ pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
         .compile()
         .unwrap();
 
-    VM::from(&chunk).interpret()
+    VM::from(chunk).interpret()
 }

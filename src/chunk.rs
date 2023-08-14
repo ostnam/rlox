@@ -119,7 +119,7 @@ impl Display for OpCode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Chunk (pub Vec<Instruction>);
 
 impl Chunk {
@@ -156,6 +156,7 @@ impl std::fmt::Debug for Function {
     }
 }
 
+#[derive(Debug)]
 pub enum FunctionType {
     Regular,
     Script,

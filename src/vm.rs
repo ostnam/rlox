@@ -1,19 +1,27 @@
 use std::collections::HashMap;
 
-use crate::chunk::{Chunk, Instruction, LoxVal::{self, Num, Str}, OpCode};
+use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function};
 
-pub struct VM<'a> {
-    chunk: &'a Chunk,
+pub struct VM {
+    functions: Vec<Function>,
+    // current_function: usize,
     ip: usize,
     stack: Vec<LoxVal>,
-    globals: HashMap<&'a str, LoxVal>,
+    globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
+    // call_frames: Vec<CallFrame>,
 }
 
-impl<'a> From<&'a Chunk> for VM<'a> {
-    fn from(chunk: &'a Chunk) -> Self {
+struct CallFrame {
+    function: usize,
+    ip: usize,
+    slots: Vec<LoxVal>,
+}
+
+impl From<Vec<Function>> for VM {
+    fn from(functions: Vec<Function>) -> Self {
         VM {
-            chunk,
+            functions,
             ip: 0,
             stack: Vec::new(),
             globals: HashMap::new(),
@@ -53,13 +61,13 @@ impl VMError {
     }
 }
 
-impl<'a> VM<'a> {
+impl VM {
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         loop {
-            let instr = match self.chunk.0.get(self.ip) {
+            let instr = match self.functions[0].chunk.0.get(self.ip) {
                 Some(i) => i,
                 None => break,
-            };
+            }.clone();
             match &instr.op {
                 OpCode::Add => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l+r)),
@@ -82,16 +90,16 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "The + operator can either be used to add number or concatenate strings".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
                 OpCode::DefineGlobal(name) => match self.pop_val() {
                     Some(val) => {
-                        self.globals.insert(name, val);
+                        self.globals.insert(name.clone(), val);
                     },
-                    None => return Err(VMError::stack_exhausted(instr)),
+                    None => return Err(VMError::stack_exhausted(&instr)),
                 },
 
                 OpCode::Divide => match (self.pop_val(), self.pop_val()) {
@@ -108,12 +116,12 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "on the left side of the / operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
                 OpCode::Equal => match (self.pop_val(), self.pop_val()) {
                     (Some(rhs), Some(lhs)) => self.push_val(LoxVal::Bool(lhs == rhs)),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::GetGlobal(var) => {
@@ -149,7 +157,7 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "on the left side of the > operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
                 OpCode::Jump(tgt) => {
@@ -191,7 +199,7 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "on the left side of the < operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
                 OpCode::Multiply => match (self.pop_val(), self.pop_val()) {
@@ -208,12 +216,12 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "on the left side of the * operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
 
                 OpCode::Negate => match self.pop_val() {
-                    None => return Err(VMError::stack_exhausted(instr)),
+                    None => return Err(VMError::stack_exhausted(&instr)),
                     Some(Num(n)) => self.push_val(Num(-n)),
                     Some(other) => return Err(VMError::TypeError{
                         line: instr.line,
@@ -225,7 +233,7 @@ impl<'a> VM<'a> {
 
                 OpCode::Not => match self.pop_val() {
                     Some(val) => self.push_val(val.cast_to_not_bool()),
-                    _ => return Err(VMError::stack_exhausted(instr)),
+                    _ => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::Pop => {
@@ -234,18 +242,18 @@ impl<'a> VM<'a> {
 
                 OpCode::Print => match self.pop_val() {
                     Some(val) => println!("{val}"),
-                    _ => return Err(VMError::stack_exhausted(instr)),
+                    _ => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::SetGlobal(var) => match self.peek(0) {
                     Some(val) if self.globals.contains_key(var.as_str()) => {
-                        self.globals.insert(var.as_str(), val.clone());
+                        self.globals.insert(var.clone(), val.clone());
                     },
                     Some(_) => return Err(VMError::UndefinedVariable {
                         line: 0,
                         name: var.clone(),
                     }),
-                    None => return Err(VMError::stack_exhausted(instr)),
+                    None => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::SetLocal(pos) => {
@@ -278,7 +286,7 @@ impl<'a> VM<'a> {
                         got: other.type_name(),
                         details: "on the left side of the - operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(instr)),
+                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
 
