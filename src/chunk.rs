@@ -55,7 +55,7 @@ impl std::fmt::Display for LoxVal {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
     Constant(LoxVal),
@@ -80,7 +80,7 @@ pub enum OpCode {
     Substract,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     pub op: OpCode,
     pub line: u64,

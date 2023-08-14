@@ -572,9 +572,13 @@ impl<'a> Compiler<'a> {
             Some(x@Instruction { op: OpCode::JumpIfTrue(_), .. }) => {
                 x.op = OpCode::JumpIfTrue(tgt);
             },
-            _ => self.emit_error(&CompilationError::Raw {
-                text: format!("[{}]: error patching jump", self.current_line),
+            Some(_) => self.emit_error(&CompilationError::Raw {
+                text: format!("[{}]: BUG: error patching jump, unhandled jump kind: {:?}", self.current_line, self.result.0[jmp_idx].clone()),
+            }),
+            None => self.emit_error(&CompilationError::Raw {
+                text: format!("[{}]: BUG: error patching jump, incorrect jump index: {jmp_idx}", self.current_line),
             })
+
         }
     }
 
