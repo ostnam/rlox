@@ -57,7 +57,6 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Fun { .. }
             | Token::If { .. }
             | Token::Nil { .. }
-            | Token::Or { .. }
             | Token::Print { .. }
             | Token::Return { .. }
             | Token::Super { .. }
@@ -67,6 +66,7 @@ impl From<&Token> for PrecedenceLvl {
             | Token::While { .. }
             | Token::Dot { .. } => PrecedenceLvl::Null,
 
+            Token::Or { .. } => PrecedenceLvl::Or,
             Token::And { .. } => PrecedenceLvl::And,
 
             Token::BangEql { .. }
@@ -569,6 +569,9 @@ impl<'a> Compiler<'a> {
             Some(x@Instruction { op: OpCode::Jump(_), .. }) => {
                 x.op = OpCode::Jump(tgt);
             },
+            Some(x@Instruction { op: OpCode::JumpIfTrue(_), .. }) => {
+                x.op = OpCode::JumpIfTrue(tgt);
+            },
             _ => self.emit_error(&CompilationError::Raw {
                 text: format!("[{}]: error patching jump", self.current_line),
             })
@@ -677,6 +680,13 @@ impl<'a> Compiler<'a> {
         self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
         self.parse_precedence(PrecedenceLvl::And);
         self.patch_jump(false_jmp);
+    }
+
+    fn or(&mut self, _can_assign: bool) {
+        let true_jmp = self.emit_jump(OpCode::JumpIfTrue(0));
+        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.parse_precedence(PrecedenceLvl::Or);
+        self.patch_jump(true_jmp);
     }
 
     fn literal(&mut self, _can_assign: bool) {
@@ -826,7 +836,6 @@ impl<'a> Compiler<'a> {
             Token::Fun { .. } => (),
             Token::If { .. } => (),
             Token::Nil { .. } => (),
-            Token::Or { .. } => (),
             Token::Print { .. } => (),
             Token::Return { .. } => (),
             Token::Super { .. } => (),
@@ -835,6 +844,7 @@ impl<'a> Compiler<'a> {
             Token::Var { .. } => (),
             Token::While { .. } => (),
             Token::And { .. } => self.and(can_assign),
+            Token::Or { .. } => self.or(can_assign),
             Token::Plus { .. }
             | Token::Minus { .. }
             | Token::Slash { .. }

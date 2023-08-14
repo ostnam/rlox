@@ -390,7 +390,7 @@ fn test_if_stmt() {
 }
 
 #[test]
-fn test_and_expr() {
+fn test_bool_operator() {
     assert_eq!(
         common::run_program(r#"
             true and false;
@@ -414,5 +414,35 @@ fn test_and_expr() {
             true and true and false and 10;
         "#),
         Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            10 or false;
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            false or true;
+        "#),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            false or nil;
+        "#),
+        Ok(LoxVal::Nil),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            true or true and false and 10;
+        "#),
+        Ok(LoxVal::Bool(true)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            false or true and false or 20;
+        "#),
+        Ok(LoxVal::Num(20.0)),
     );
 }

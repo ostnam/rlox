@@ -167,6 +167,16 @@ impl<'a> VM<'a> {
                     }
                 },
 
+                OpCode::JumpIfTrue(tgt) => {
+                    match self.peek(0).map(|v| v.clone().cast_to_bool()) {
+                        Some(LoxVal::Bool(true)) => {
+                            self.ip = *tgt;
+                            continue;
+                        }
+                        _ => (),
+                    }
+                },
+
                 OpCode::Less => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l<r)),
                     (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
