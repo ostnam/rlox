@@ -343,6 +343,18 @@ fn test_local_var() {
         "#),
         Ok(LoxVal::Num(10.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 10;
+            {
+                var y = 20;
+                x = y;
+                x = y;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(20.0)),
+    );
 }
 
 #[test]

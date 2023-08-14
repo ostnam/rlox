@@ -237,9 +237,9 @@ impl<'a> VM<'a> {
                     _ => return Err(VMError::stack_exhausted(instr)),
                 }
 
-                OpCode::SetGlobal(var) => match self.pop_val() {
+                OpCode::SetGlobal(var) => match self.peek(0) {
                     Some(val) if self.globals.contains_key(var.as_str()) => {
-                        self.globals.insert(var.as_str(), val);
+                        self.globals.insert(var.as_str(), val.clone());
                     },
                     Some(_) => return Err(VMError::UndefinedVariable {
                         line: 0,
@@ -300,7 +300,7 @@ impl<'a> VM<'a> {
         self.stack.pop()
     }
 
-    fn peek(&mut self, depth: usize) -> Option<&LoxVal> {
+    fn peek(&self, depth: usize) -> Option<&LoxVal> {
         self.stack.get(self.stack.len() - 1 - depth)
     }
 }
