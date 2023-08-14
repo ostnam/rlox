@@ -73,9 +73,9 @@ impl Token {
             Token::GreaterEql { line } => *line,
             Token::Less { line } => *line,
             Token::LessEql { line } => *line,
-            Token::Identifier { name, line } => *line,
-            Token::NumLit { value, line } => *line,
-            Token::StrLit { content, line } => *line,
+            Token::Identifier { name: _, line } => *line,
+            Token::NumLit { value: _, line } => *line,
+            Token::StrLit { content: _, line } => *line,
             Token::And { line } => *line,
             Token::Class { line } => *line,
             Token::Else { line } => *line,
@@ -156,7 +156,6 @@ impl<'a> Scanner<'a> {
     /// Like `peek`, it doesn't increment the internal counter.
     fn peek_next(&self) -> Option<char> {
         let mut copy = self.chars.clone();
-        copy.clone();
         copy.next();
         copy.peek().map(|x| *x)
     }

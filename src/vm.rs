@@ -281,12 +281,6 @@ impl<'a> VM<'a> {
         Err(VMError::EndedWithNoReturn)
     }
 
-    fn advance(&mut self) -> Option<&Instruction> {
-        let res = self.chunk.0.get(self.ip);
-        self.ip += 1;
-        res
-    }
-
     fn push_val(&mut self, val: LoxVal) {
         self.last_val = val.clone();
         self.stack.push(val);

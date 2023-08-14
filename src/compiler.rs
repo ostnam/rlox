@@ -372,7 +372,7 @@ impl<'a> Compiler<'a> {
         self.expression();
         self.consume(
             |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::TokensLeft,
+            &CompilationError::UnclosedParens { line: self.current_line },
         )
     }
 
