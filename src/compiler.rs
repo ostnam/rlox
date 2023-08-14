@@ -122,7 +122,10 @@ enum CompilationError {
     },
     IfStmtMissingParens {
         line: u64,
-    }
+    },
+    WhileStmtMissingParens {
+        line: u64,
+    },
 }
 
 impl<'a> Compiler<'a> {
@@ -210,7 +213,10 @@ impl<'a> Compiler<'a> {
         }
             CompilationError::IfStmtMissingParens { line } => {
                 println!("[{line}]: Missing parens around the condition of an if statement.");
-            }
+            },
+            CompilationError::WhileStmtMissingParens { line } => {
+                println!("[{line}]: Missing parens around the condition of a while statement.");
+            },
         }
     }
 
@@ -483,6 +489,8 @@ impl<'a> Compiler<'a> {
             self.end_scope();
         } else if self.matches(|t| matches!(t, Token::If { .. })) {
             self.if_statement();
+        } else if self.matches(|t| matches!(t, Token::While { .. })) {
+            self.while_statement();
         } else {
             self.expr_statement();
         }
@@ -555,9 +563,32 @@ impl<'a> Compiler<'a> {
         self.patch_jump(body_jmp);
     }
 
+    fn while_statement(&mut self) {
+        let loop_start = self.result.0.len();
+        self.consume(
+            |t| matches!(t, Token::LParen { .. }),
+            &CompilationError::WhileStmtMissingParens { line: self.current_line }
+        );
+        self.expression();
+        self.consume(
+            |t| matches!(t, Token::RParen { .. }),
+            &CompilationError::WhileStmtMissingParens { line: self.current_line }
+        );
+        let exit_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.statement();
+        self.emit_loop_jump(loop_start);
+        self.patch_jump(exit_jmp);
+        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+    }
+
     fn emit_jump(&mut self, jmp: OpCode) -> usize {
         self.emit_instr(Instruction { op: jmp, line: self.current_line });
         self.result.0.len() - 1
+    }
+
+    fn emit_loop_jump(&mut self, tgt: usize) {
+        self.emit_instr(Instruction { op: OpCode::Jump(tgt), line: self.current_line });
     }
 
     fn patch_jump(&mut self, jmp_idx: usize) {

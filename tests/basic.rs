@@ -446,3 +446,27 @@ fn test_bool_operator() {
         Ok(LoxVal::Num(20.0)),
     );
 }
+
+#[test]
+fn test_while() {
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            while (x < 10) {
+                x = x + 1;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            while (false) {
+                x = x + 1;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(10.0)),
+    );
+}
