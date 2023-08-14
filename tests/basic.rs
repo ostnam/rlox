@@ -479,6 +479,50 @@ fn test_while() {
             }
             x;
         "#),
+        Ok(LoxVal::Num(0.0)),
+    );
+}
+
+#[test]
+fn test_for() {
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            for (; x < 10; x = x + 1) {
+            }
+            x;
+        "#),
         Ok(LoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            for (var y = 0; y < 10; y = y + 1) {
+                x = y;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(9.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            for (var y = 0; false; y = y + 1) {
+                x = y;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(0.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = 0;
+            var y;
+            for (y = 0; y < 10; y = y + 1) {
+                x = y;
+            }
+            x;
+        "#),
+        Ok(LoxVal::Num(9.0)),
     );
 }

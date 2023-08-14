@@ -126,6 +126,9 @@ enum CompilationError {
     WhileStmtMissingParens {
         line: u64,
     },
+    ForStmtMissingParens {
+        line: u64,
+    },
 }
 
 impl<'a> Compiler<'a> {
@@ -216,6 +219,9 @@ impl<'a> Compiler<'a> {
             },
             CompilationError::WhileStmtMissingParens { line } => {
                 println!("[{line}]: Missing parens around the condition of a while statement.");
+            },
+            CompilationError::ForStmtMissingParens { line } => {
+                println!("[{line}]: Missing parens around the condition of a for statement.");
             },
         }
     }
@@ -491,6 +497,8 @@ impl<'a> Compiler<'a> {
             self.if_statement();
         } else if self.matches(|t| matches!(t, Token::While { .. })) {
             self.while_statement();
+        } else if self.matches(|t| matches!(t, Token::For { .. })) {
+            self.for_statement();
         } else {
             self.expr_statement();
         }
@@ -580,6 +588,67 @@ impl<'a> Compiler<'a> {
         self.emit_loop_jump(loop_start);
         self.patch_jump(exit_jmp);
         self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+    }
+
+    fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(
+            |t| matches!(t, Token::LParen { .. }),
+            &CompilationError::ForStmtMissingParens { line: self.current_line }
+        );
+        // initializer
+        if self.matches(|t| matches!(t, Token::Var { .. })) {
+            self.var_declaration();
+        } else if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+            self.expr_statement();
+        }
+
+        // condition
+        let mut loop_start = self.result.0.len();
+        let mut exit_jmp = None;
+        if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+            self.expression();
+            self.consume(
+                |t| matches!(t, Token::Semicolon { .. }),
+                &CompilationError::Raw {
+                    text: format!("[{}]: Missing ; after condition of the for loop.", self.current_line),
+                },
+            );
+            exit_jmp = Some(self.emit_jump(OpCode::JumpIfFalse(0)));
+            self.emit_instr(Instruction {
+                op: OpCode::Pop,
+                line: self.current_line,
+            });
+        }
+
+        // update
+        if !self.matches(|t| matches!(t, Token::RParen { .. })) {
+            let body_jump = self.emit_jump(OpCode::Jump(0));
+            let update_start = self.result.0.len();
+            self.expression();
+            self.emit_instr(Instruction {
+                op: OpCode::Pop,
+                line: self.current_line
+            });
+            self.consume(
+                |t| matches!(t, Token::RParen { .. }),
+                &CompilationError::ForStmtMissingParens { line: self.current_line },
+            );
+            self.emit_loop_jump(loop_start);
+            loop_start = update_start;
+            self.patch_jump(body_jump);
+        }
+
+        self.statement();
+        self.emit_loop_jump(loop_start);
+        if let Some(idx) = exit_jmp {
+            self.patch_jump(idx);
+            self.emit_instr(Instruction {
+                op: OpCode::Pop,
+                line: self.current_line,
+            });
+        }
+        self.end_scope();
     }
 
     fn emit_jump(&mut self, jmp: OpCode) -> usize {
@@ -1132,6 +1201,52 @@ mod tests {
                 Instruction { op: OpCode::Jump(7), line: 4 },
                 Instruction { op: OpCode::Pop, line: 4 },
                 Instruction { op: OpCode::Return, line: 4 },
+            ])),
+        );
+    }
+
+    #[test]
+    fn compile_for_stmt() {
+        assert_eq!(
+            run_compiler(r#"
+                var x = 0;
+                for (var y = 0; y < 10; y = y + 1) {
+                    x = y;
+                }
+            "#),
+            Ok(Chunk(vec![
+                // line 1
+                Instruction { op: OpCode::Constant(LoxVal::Num(0.0)), line: 2 },
+                Instruction { op: OpCode::DefineGlobal("x".to_string()), line: 2 },
+                // var y = 0;
+                Instruction { op: OpCode::Constant(LoxVal::Num(0.0)), line: 3 },
+                // loop condition
+                Instruction { op: OpCode::GetLocal(0), line: 3 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
+                Instruction { op: OpCode::Less, line: 3 },
+                Instruction { op: OpCode::JumpIfFalse(19), line: 3 },
+                // update
+                Instruction { op: OpCode::Pop, line: 3 },
+                // jump to body
+                Instruction { op: OpCode::Jump(15), line: 3 },
+
+                // update
+                Instruction { op: OpCode::GetLocal(0), line: 3 },
+                Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 3 },
+                Instruction { op: OpCode::Add, line: 3 },
+                Instruction { op: OpCode::SetLocal(0), line: 3 },
+                Instruction { op: OpCode::Pop, line: 3 },
+                // jump to cond
+                Instruction { op: OpCode::Jump(3), line: 3 },
+
+                // body
+                Instruction { op: OpCode::GetLocal(0), line: 4 },
+                Instruction { op: OpCode::SetGlobal("x".to_string()), line: 4 },
+                Instruction { op: OpCode::Pop, line: 4 },
+                Instruction { op: OpCode::Jump(9), line: 5 },
+                Instruction { op: OpCode::Pop, line: 5 },
+                Instruction { op: OpCode::Pop, line: 5 },
+                Instruction { op: OpCode::Return, line: 5 },
             ])),
         );
     }
