@@ -388,3 +388,31 @@ fn test_if_stmt() {
         Ok(LoxVal::Num(1.0)),
     );
 }
+
+#[test]
+fn test_and_expr() {
+    assert_eq!(
+        common::run_program(r#"
+            true and false;
+        "#),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            false and true;
+        "#),
+        Ok(LoxVal::Bool(false)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            1 and 0;
+        "#),
+        Ok(LoxVal::Num(0.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            true and true and false and 10;
+        "#),
+        Ok(LoxVal::Bool(false)),
+    );
+}

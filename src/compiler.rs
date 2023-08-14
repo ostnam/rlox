@@ -50,7 +50,6 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Identifier { .. }
             | Token::NumLit { .. }
             | Token::StrLit { .. }
-            | Token::And { .. }
             | Token::Class { .. }
             | Token::Else { .. }
             | Token::False { .. }
@@ -67,6 +66,8 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Var { .. }
             | Token::While { .. }
             | Token::Dot { .. } => PrecedenceLvl::Null,
+
+            Token::And { .. } => PrecedenceLvl::And,
 
             Token::BangEql { .. }
             | Token::EqlEql { .. } => PrecedenceLvl::Equality,
@@ -671,6 +672,13 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn and(&mut self, _can_assign: bool) {
+        let false_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.parse_precedence(PrecedenceLvl::And);
+        self.patch_jump(false_jmp);
+    }
+
     fn literal(&mut self, _can_assign: bool) {
         match self.previous {
             Token::True { line } =>
@@ -811,7 +819,6 @@ impl<'a> Compiler<'a> {
             Token::Identifier { .. } => (),
             Token::NumLit { .. } => (),
             Token::StrLit { .. } => (),
-            Token::And { .. } => (),
             Token::Class { .. } => (),
             Token::Else { .. } => (),
             Token::False { .. } => (),
@@ -827,6 +834,7 @@ impl<'a> Compiler<'a> {
             Token::True { .. } => (),
             Token::Var { .. } => (),
             Token::While { .. } => (),
+            Token::And { .. } => self.and(can_assign),
             Token::Plus { .. }
             | Token::Minus { .. }
             | Token::Slash { .. }
