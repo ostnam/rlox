@@ -429,6 +429,8 @@ impl<'a> Compiler<'a> {
     fn declaration(&mut self) {
         if self.matches(|t| matches!(t, Token::Var { .. })) {
             self.var_declaration();
+        } else if self.matches(|t| matches!(t, Token::Fun { .. })) {
+            self.function_declaration();
         } else {
             self.statement();
         }
@@ -504,6 +506,123 @@ impl<'a> Compiler<'a> {
         } else {
             let prev = self.locals.pop().expect("BUG: local was removed from the local vec before the end of its declaration");
             self.locals.push(Local { initialized: true, ..prev });
+        }
+    }
+
+    fn function_declaration(&mut self) {
+        let fn_name = match &self.current {
+            Some(Token::Identifier { name, .. }) => {
+                let name = name.clone();
+                self.advance();
+                name
+            },
+            _ => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: function with no name",
+                        self.current_line,
+                    ),
+                });
+                return;
+            },
+        };
+        self.function(fn_name, FunctionType::Regular);
+    }
+
+    fn function(
+        &mut self,
+        name: String,
+        _fn_type: FunctionType,
+    ) {
+        // if we're in a local scope, we need to add the function name
+        // as a local variable so that when we compile the body,
+        // the name resolves properly.
+        if self.current_scope_depth > 0 {
+            self.locals.push(Local {
+                name: name.clone(),
+                depth: self.current_scope_depth,
+                initialized: true,
+            });
+        };
+        self.functions.push(Function {
+            arity: 0,
+            chunk: Chunk::default(),
+            name: name.clone(),
+        });
+        let old_fn_idx = self.current_function;
+        let new_fn_idx = self.functions.len() - 1;
+        self.current_function = new_fn_idx;
+        self.begin_scope();
+        self.consume(
+            |t| matches!(t, Token::LParen { .. }),
+            &CompilationError::Raw {
+                text: format!(
+                    "[{}] missing ( after function name",
+                    self.current_line,
+                ),
+            },
+        );
+        if !matches!(self.current, Some(Token::RParen { .. })) {
+            let mut first = true;
+            while first || self.matches(|t| matches!(t, Token::Comma { .. })) {
+                first = false;
+                self.functions
+                    .get_mut(self.current_function)
+                    .map(|f| f.arity += 1);
+                let arg_name = match &self.current {
+                    Some(Token::Identifier { name, .. }) => {
+                        let name = name.clone();
+                        self.advance();
+                        name
+                    },
+                    _ => {
+                        self.emit_error(&CompilationError::Raw {
+                            text: format!(
+                                "[{}] expected parameter name",
+                                self.current_line,
+                            ),
+                        });
+                        return;
+                    },
+                };
+                self.locals.push(Local {
+                    name: arg_name,
+                    depth: self.current_scope_depth,
+                    initialized: true,
+                });
+            }
+        }
+        self.consume(
+            |t| matches!(t, Token::RParen { .. }),
+            &CompilationError::Raw {
+                text: format!(
+                    "[{}] missing ) after function args",
+                    self.current_line,
+                ),
+            },
+        );
+        self.consume(
+            |t| matches!(t, Token::LBrace { .. }),
+            &CompilationError::Raw {
+                text: format!(
+                    "[{}] missing {{ after function args",
+                    self.current_line,
+                ),
+            },
+        );
+        self.block();
+        self.end_scope();
+        self.current_function = old_fn_idx;
+        self.emit_instr(Instruction {
+            op: OpCode::Constant(LoxVal::Function(self.functions[new_fn_idx].clone())),
+            line: self.current_line,
+        });
+
+        if self.current_scope_depth == 0 {
+            self.emit_instr(Instruction {
+                op: OpCode::DefineGlobal(name),
+                line: self.current_line,
+            });
         }
     }
 
@@ -1279,6 +1398,30 @@ mod tests {
                 Instruction { op: OpCode::Pop, line: 5 },
                 Instruction { op: OpCode::Pop, line: 5 },
                 Instruction { op: OpCode::Return, line: 5 },
+            ]),
+        );
+    }
+
+    #[test]
+    fn compile_function() {
+        let function = Function {
+            arity: 0,
+            chunk: Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 3},
+                Instruction { op: OpCode::Print, line: 3},
+            ]),
+            name: "function".to_string(),
+        };
+        assert_eq!(
+            run_compiler(r#"
+                fun function() {
+                    print 2;
+                }
+            "#).unwrap()[0].chunk,
+            Chunk(vec![
+                Instruction { op: OpCode::Constant(LoxVal::Function(function)), line: 4 },
+                Instruction { op: OpCode::DefineGlobal("function".to_string()), line: 4 },
+                Instruction { op: OpCode::Return, line: 4 },
             ]),
         );
     }

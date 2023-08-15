@@ -1,4 +1,4 @@
-use rlox::chunk::LoxVal;
+use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode};
 use rlox::vm::VMError;
 
 mod common;
@@ -524,5 +524,29 @@ fn test_for() {
             x;
         "#),
         Ok(LoxVal::Num(9.0)),
+    );
+}
+
+#[test]
+fn test_functions() {
+    assert_eq!(
+        common::run_program(r#"
+            fun f(arg) {
+                arg + 10;
+            }
+
+            print f;
+        "#),
+        Ok(LoxVal::Function(Function {
+            arity: 1,
+            chunk: Chunk(vec![
+                Instruction { op: OpCode::GetLocal(0), line: 3},
+                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3},
+                Instruction { op: OpCode::Add, line: 3},
+                Instruction { op: OpCode::Pop, line: 3},
+                Instruction { op: OpCode::Pop, line: 4},
+            ]),
+            name: "f".to_string(),
+        })),
     );
 }
