@@ -62,6 +62,7 @@ impl std::fmt::Display for LoxVal {
 #[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
+    Call(u8),
     Constant(LoxVal),
     DefineGlobal(String),
     Divide,
@@ -94,6 +95,7 @@ impl Display for OpCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
             OpCode::Add => "ADD".to_string(),
+            OpCode::Call(args) => format!("CALL WITH {args} args"),
             OpCode::Constant(idx) => format!("CONSTANT {idx}"),
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
             OpCode::Divide => "DIVIDE".to_string(),

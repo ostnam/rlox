@@ -41,8 +41,7 @@ enum PrecedenceLvl {
 impl From<&Token> for PrecedenceLvl {
     fn from(op: &Token) -> Self {
         match op {
-            Token::LParen { .. }
-            | Token::RParen { .. }
+            Token::RParen { .. }
             | Token::LBrace { .. }
             | Token::RBrace { .. }
             | Token::Comma { .. }
@@ -84,6 +83,8 @@ impl From<&Token> for PrecedenceLvl {
 
             Token::Slash { .. }
             | Token::Star { .. } => PrecedenceLvl::Factor,
+
+            Token::LParen { .. } => PrecedenceLvl::Call,
         }
     }
 }
@@ -532,8 +533,9 @@ impl<'a> Compiler<'a> {
     fn function(
         &mut self,
         name: String,
-        _fn_type: FunctionType,
+        fn_type: FunctionType,
     ) {
+        self.current_function_type = fn_type;
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
         // the name resolves properly.
@@ -611,6 +613,7 @@ impl<'a> Compiler<'a> {
             },
         );
         self.block();
+        self.emit_implicit_return();
         self.end_scope();
         self.current_function = old_fn_idx;
         self.emit_instr(Instruction {
@@ -624,6 +627,46 @@ impl<'a> Compiler<'a> {
                 line: self.current_line,
             });
         }
+    }
+
+    fn emit_implicit_return(&mut self) {
+        self.emit_instr(Instruction {
+            op: OpCode::Constant(LoxVal::Nil),
+            line: self.current_line,
+        });
+        self.emit_instr(Instruction {
+            op: OpCode::Return,
+            line: self.current_line,
+        });
+    }
+
+    fn call(&mut self, _can_assign: bool) {
+        let mut argcount: u8 = 0;
+        if !matches!(self.current, Some(Token::RParen { .. })) {
+            let mut fst_iter = true;
+            while fst_iter || self.matches(|t| matches!(t, Token::Comma { .. })) {
+                fst_iter = false;
+                self.expression();
+                argcount = match argcount.checked_add(1) {
+                    Some(x) => x,
+                    None => {
+                        self.emit_error(&CompilationError::Raw {
+                            text: format!("[{}]: can't pass more than 255 args to a function.", self.current_line),
+                        });
+                        return;
+                    },
+                }
+            }
+        }
+        self.consume(
+            |t| matches!(t, Token::RParen { .. }),
+            &CompilationError::Raw {
+                text: format!("[{}]: expected ) after argument list", self.current_line),
+        });
+        self.emit_instr(Instruction {
+            op: OpCode::Call(argcount),
+            line: self.current_line,
+        });
     }
 
     fn statement(&mut self) {
@@ -1072,7 +1115,6 @@ impl<'a> Compiler<'a> {
 
     fn infix_rule(&mut self, token: &Token, can_assign: bool) {
         match token {
-            Token::LParen { .. } => (),
             Token::RParen { .. } => (),
             Token::LBrace { .. } => (),
             Token::RBrace { .. } => (),
@@ -1110,6 +1152,7 @@ impl<'a> Compiler<'a> {
             | Token::GreaterEql { .. }
             | Token::Less { .. }
             | Token::LessEql { .. } => self.binary(can_assign),
+            Token::LParen { .. } => self.call(can_assign),
         }
     }
 }
@@ -1409,6 +1452,8 @@ mod tests {
             chunk: Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 3},
                 Instruction { op: OpCode::Print, line: 3},
+                Instruction { op: OpCode::Constant(LoxVal::Nil), line: 4},
+                Instruction { op: OpCode::Return, line: 4},
             ]),
             name: "function".to_string(),
         };

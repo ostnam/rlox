@@ -544,6 +544,8 @@ fn test_functions() {
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3},
                 Instruction { op: OpCode::Add, line: 3},
                 Instruction { op: OpCode::Pop, line: 3},
+                Instruction { op: OpCode::Constant(LoxVal::Nil), line: 4},
+                Instruction { op: OpCode::Return, line: 4},
                 Instruction { op: OpCode::Pop, line: 4},
             ]),
             name: "f".to_string(),

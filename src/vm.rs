@@ -15,6 +15,8 @@ struct CallFrame {
     function: Function,
     ip: usize,
     /// Index of the stack where the frame starts
+    /// when calling a function, the value of the function being called is
+    /// placed immediately before this index.
     offset: usize,
 }
 
@@ -53,6 +55,11 @@ pub enum VMError {
         details: String,
     },
     IncorrectCurrentFunction,
+    IncorrectArgCount {
+        expected: u8,
+        got: u8,
+        line: u64,
+    }
 }
 
 impl VMError {
@@ -119,6 +126,24 @@ impl VM {
         Ok(())
     }
 
+    fn get_called_fn(&self, n_args: u8) -> Result<&Function, VMError> {
+        let last_arg_idx = self.stack.len() - 1;
+        let fn_idx = last_arg_idx - n_args as usize;
+        match self.stack.get(fn_idx) {
+            Some(LoxVal::Function(f)) => Ok(f),
+            Some(other) => Err(VMError::TypeError {
+                line: 0,
+                expected: "callable".to_string(),
+                got: other.type_name(),
+                details: "can't call non-function".to_string(),
+            }),
+            None => Err(VMError::StackExhausted {
+                line: 0,
+                details: format!("stack exhausted trying to get the function being called."),
+            }),
+        }
+    }
+
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         loop {
             let instr = match self.get_current_instr()? {
@@ -149,6 +174,28 @@ impl VM {
                     }),
                     (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 }
+
+                OpCode::Call(n_args) => {
+                    let function = self.get_called_fn(n_args)?;
+                    if function.arity != n_args {
+                        return Err(VMError::IncorrectArgCount {
+                            expected: function.arity,
+                            got: n_args,
+                            line: 0
+                        });
+                    }
+                    self.call_frames.push(CallFrame {
+                            function: function.clone(),
+                            ip: 0,
+                            offset: self.stack.len() - n_args as usize,
+                    });
+                    let prev_fn_idx = self.call_frames.len() - 2;
+                    match self.call_frames.get_mut(prev_fn_idx) {
+                        Some(frame) => frame.ip += 1,
+                        None => (),
+                    };
+                    continue;
+                },
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
@@ -342,7 +389,16 @@ impl VM {
                 },
 
 
-                OpCode::Return => return Ok(self.stack.pop().unwrap_or(self.last_val.clone())),
+                OpCode::Return => {
+                    if self.call_frames.len() == 1 {
+                        return Ok(self.stack.pop().unwrap_or(self.last_val.clone()));
+                    }
+                    let result = self.pop_val().unwrap();
+                    let old_frame = self.call_frames.pop().unwrap();
+                    let frame_start_idx = old_frame.offset - 1;
+                    self.stack.truncate(frame_start_idx);
+                    self.stack.push(result);
+                }
             }
 
             self.increment_ip()?;
