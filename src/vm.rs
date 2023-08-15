@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function};
+use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable};
 
 pub struct VM {
     main: Function,
@@ -126,11 +126,12 @@ impl VM {
         Ok(())
     }
 
-    fn get_called_fn(&self, n_args: u8) -> Result<&Function, VMError> {
+    fn get_called_fn(&self, n_args: u8) -> Result<Callable, VMError> {
         let last_arg_idx = self.stack.len() - 1;
         let fn_idx = last_arg_idx - n_args as usize;
         match self.stack.get(fn_idx) {
-            Some(LoxVal::Function(f)) => Ok(f),
+            Some(LoxVal::Function(f)) => Ok(Callable::Function(f.clone())),
+            Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(*f)),
             Some(other) => Err(VMError::TypeError {
                 line: 0,
                 expected: "callable".to_string(),
@@ -176,20 +177,32 @@ impl VM {
                 }
 
                 OpCode::Call(n_args) => {
-                    let function = self.get_called_fn(n_args)?;
-                    if function.arity != n_args {
-                        return Err(VMError::IncorrectArgCount {
-                            expected: function.arity,
-                            got: n_args,
-                            line: 0
-                        });
-                    }
-                    self.call_frames.push(CallFrame {
-                            function: function.clone(),
-                            ip: 0,
-                            offset: self.stack.len() - n_args as usize,
-                    });
-                    let prev_fn_idx = self.call_frames.len() - 2;
+                    let mut native_called = false;
+                    match self.get_called_fn(n_args)? {
+                        Callable::Function(f) => {
+                            if f.arity != n_args {
+                                return Err(VMError::IncorrectArgCount {
+                                    expected: f.arity,
+                                    got: n_args,
+                                    line: 0
+                                });
+                            }
+                            self.call_frames.push(CallFrame {
+                                function: f.clone(),
+                                ip: 0,
+                                offset: self.stack.len() - n_args as usize,
+                            });
+                        },
+                        Callable::NativeFunction(f) => {
+                            native_called = true;
+                            self.apply_native(f, n_args)?;
+                        }
+                    };
+                    let prev_fn_idx = if native_called {
+                        self.call_frames.len() - 1
+                    } else {
+                        self.call_frames.len() - 1
+                    };
                     match self.call_frames.get_mut(prev_fn_idx) {
                         Some(frame) => frame.ip += 1,
                         None => (),
@@ -231,10 +244,13 @@ impl VM {
                 OpCode::GetGlobal(var) => {
                     match self.globals.get(var.as_str()) {
                         Some(val) => self.push_val(val.clone()),
-                        None => return Err(VMError::UndefinedVariable {
-                            name: var.clone(),
-                            line: instr.line,
-                        }),
+                        None => match get_native(&var) {
+                            Some(f) => self.push_val(LoxVal::NativeFunction(f)),
+                            None => return Err(VMError::UndefinedVariable {
+                                name: var.clone(),
+                                line: instr.line,
+                            })
+                        },
                     }
                 }
 
@@ -419,5 +435,33 @@ impl VM {
     fn peek(&self, depth: usize) -> Option<&LoxVal> {
         self.stack.get(self.stack.len() - 1 - depth)
     }
+
+    fn apply_native(
+        &mut self,
+        f: fn(&[LoxVal]) -> Result<LoxVal, VMError>,
+        n_args: u8
+    ) -> Result<(), VMError> {
+        let frame_end = self.stack.len();
+        let frame_start = frame_end - n_args as usize;
+        let result = f(&self.stack[frame_start..frame_end])?;
+        self.stack.truncate(frame_start);
+        self.push_val(result);
+        Ok(())
+    }
 }
 
+fn native_clock(_args: &[LoxVal]) -> Result<LoxVal, VMError> {
+    let now = std::time::SystemTime::now();
+    let since_unix = now.duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    Ok(LoxVal::Num(since_unix as f64))
+}
+
+fn get_native(name: &str) -> Option<fn(&[LoxVal]) -> Result<LoxVal, VMError>> {
+    match name {
+        "clock" => Some(native_clock),
+        _ => None
+    }
+}

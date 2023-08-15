@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::vm::VMError;
+
 #[derive(Clone, PartialEq)]
 pub enum LoxVal {
     Bool(bool),
@@ -7,6 +9,14 @@ pub enum LoxVal {
     Num(f64),
     Str(String),
     Function(Function),
+    NativeFunction(NativeFunction),
+}
+
+type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
+
+pub enum Callable {
+    Function(Function),
+    NativeFunction(NativeFunction),
 }
 
 impl LoxVal {
@@ -17,6 +27,7 @@ impl LoxVal {
             LoxVal::Num(_)  => "number".to_string(),
             LoxVal::Str(_)  => "string".to_string(),
             LoxVal::Function(_)  => format!("function"),
+            LoxVal::NativeFunction(_)  => format!("function (builtin)"),
         }
     }
 
@@ -43,6 +54,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Num(n)  => write!(f, "Num: {n}"),
             LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
             LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
+            LoxVal::NativeFunction(fun)  => write!(f, "Native unction: \"{fun:?}\""),
         }
     }
 }
@@ -55,6 +67,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Num(n)  => write!(f, "{n}"),
             LoxVal::Str(s)  => write!(f, "{s}"),
             LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
+            LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
         }
     }
 }
