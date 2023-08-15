@@ -4,12 +4,11 @@ use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function};
 
 pub struct VM {
     functions: Vec<Function>,
-    // current_function: usize,
-    ip: usize,
+    current_function: usize,
     stack: Vec<LoxVal>,
     globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
-    // call_frames: Vec<CallFrame>,
+    call_frames: Vec<CallFrame>,
 }
 
 struct CallFrame {
@@ -22,10 +21,13 @@ impl From<Vec<Function>> for VM {
     fn from(functions: Vec<Function>) -> Self {
         VM {
             functions,
-            ip: 0,
+            current_function: 0,
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
+            call_frames: vec![
+                CallFrame { function: 0, ip: 0, slots: vec![] }
+            ],
         }
     }
 }
@@ -50,6 +52,7 @@ pub enum VMError {
         got: String,
         details: String,
     },
+    IncorrectCurrentFunction,
 }
 
 impl VMError {
@@ -62,13 +65,46 @@ impl VMError {
 }
 
 impl VM {
+    fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
+        let current_fn = match self.functions.get(self.current_function) {
+            Some(f) => f,
+            None => return Err(VMError::IncorrectCurrentFunction),
+        };
+        let ip = match self.call_frames.get(self.current_function) {
+            Some(frame) => frame.ip,
+            None => return Err(VMError::IncorrectCurrentFunction),
+        };
+        Ok(current_fn.chunk.0.get(ip).map(|instr| instr.clone()))
+    }
+
+    fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
+        match self.call_frames.get_mut(self.current_function) {
+            Some(frame) => {
+                frame.ip = tgt;
+                Ok(())
+            }
+            None => return Err(VMError::IncorrectCurrentFunction),
+        }
+    }
+
+    fn increment_ip(&mut self) -> Result<(), VMError> {
+        match self.call_frames.get_mut(self.current_function) {
+            Some(frame) => {
+                frame.ip += 1;
+                Ok(())
+            }
+            None => return Err(VMError::IncorrectCurrentFunction),
+        }
+    }
+
+
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         loop {
-            let instr = match self.functions[0].chunk.0.get(self.ip) {
-                Some(i) => i,
+            let instr = match self.get_current_instr()? {
+                Some(instr) => instr,
                 None => break,
-            }.clone();
-            match &instr.op {
+            };
+            match instr.op {
                 OpCode::Add => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l+r)),
                     (Some(Str(r)), Some(Str(l))) => self.push_val(Str(l + &r)),
@@ -95,7 +131,7 @@ impl VM {
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
-                OpCode::DefineGlobal(name) => match self.pop_val() {
+                OpCode::DefineGlobal(ref name) => match self.pop_val() {
                     Some(val) => {
                         self.globals.insert(name.clone(), val);
                     },
@@ -135,10 +171,10 @@ impl VM {
                 }
 
                 OpCode::GetLocal(depth) => {
-                    match self.stack.get(*depth) {
+                    match self.stack.get(depth) {
                         Some(val) => self.push_val(val.clone()),
                         None => return Err(VMError::LocalResolutionBug {
-                            depth: *depth,
+                            depth,
                         }),
                     }
                 }
@@ -161,14 +197,14 @@ impl VM {
                 },
 
                 OpCode::Jump(tgt) => {
-                    self.ip = *tgt;
+                    self.set_ip(tgt)?;
                     continue;  // to avoid ip += 1 at the end of the match
                 }
 
                 OpCode::JumpIfFalse(tgt) => {
                     match self.peek(0).map(|v| v.clone().cast_to_bool()) {
                         Some(LoxVal::Bool(false)) => {
-                            self.ip = *tgt;
+                            self.set_ip(tgt)?;
                             continue;
                         }
                         _ => (),
@@ -178,7 +214,7 @@ impl VM {
                 OpCode::JumpIfTrue(tgt) => {
                     match self.peek(0).map(|v| v.clone().cast_to_bool()) {
                         Some(LoxVal::Bool(true)) => {
-                            self.ip = *tgt;
+                            self.set_ip(tgt);
                             continue;
                         }
                         _ => (),
@@ -245,7 +281,7 @@ impl VM {
                     _ => return Err(VMError::stack_exhausted(&instr)),
                 }
 
-                OpCode::SetGlobal(var) => match self.peek(0) {
+                OpCode::SetGlobal(ref var) => match self.peek(0) {
                     Some(val) if self.globals.contains_key(var.as_str()) => {
                         self.globals.insert(var.clone(), val.clone());
                     },
@@ -257,13 +293,13 @@ impl VM {
                 }
 
                 OpCode::SetLocal(pos) => {
-                    if *pos >= self.stack.len() {
+                    if pos >= self.stack.len() {
                         return Err(
-                            VMError::LocalResolutionBug { depth: *pos }
+                            VMError::LocalResolutionBug { depth: pos }
                         );
                     }
                     match self.peek(0) {
-                        Some(val) => self.stack[*pos] = val.clone(),
+                        Some(val) => self.stack[pos] = val.clone(),
                         None => return Err(VMError::StackExhausted {
                                 line: 0,
                                 details: format!("Tried to set variable at pos {pos}, but peek returned None."),
@@ -293,7 +329,7 @@ impl VM {
                 OpCode::Return => return Ok(self.stack.pop().unwrap_or(self.last_val.clone())),
             }
 
-            self.ip += 1;
+            self.increment_ip()?;
         };
 
         Err(VMError::EndedWithNoReturn)
