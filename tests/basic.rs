@@ -546,9 +546,18 @@ fn test_functions() {
                 Instruction { op: OpCode::Pop, line: 3},
                 Instruction { op: OpCode::Constant(LoxVal::Nil), line: 4},
                 Instruction { op: OpCode::Return, line: 4},
-                Instruction { op: OpCode::Pop, line: 4},
             ]),
             name: "f".to_string(),
         })),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            fun math(a, b, c) {
+                return a - b + c;
+            }
+
+            math(1, 2, 4);
+        "#),
+        Ok(LoxVal::Num(3.0)),
     );
 }
