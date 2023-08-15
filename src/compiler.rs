@@ -312,6 +312,27 @@ impl<'a> Compiler<'a> {
         self.locals.truncate(num_valid_locals);
     }
 
+    fn begin_fn_scope(&mut self) {
+        self.current_scope_depth += 1;
+    }
+
+    fn end_fn_scope(&mut self) {
+        self.current_scope_depth -= 1;
+        let mut num_valid_locals = self.locals.len();
+        for idx in (0..self.locals.len()).rev() {
+            match self.locals.get(idx) {
+                None => continue,
+                Some(var) => {
+                    if var.depth <= self.current_scope_depth {
+                        break;
+                    }
+                    num_valid_locals -= 1;
+                }
+            }
+        }
+        self.locals.truncate(num_valid_locals);
+    }
+
     /// Takes the name of a local variable, and returns `Some` of the index
     /// on the stack of that variable at runtime if it is a declared local
     /// variable, and `None` otherwise.
@@ -614,7 +635,7 @@ impl<'a> Compiler<'a> {
         );
         self.block();
         self.emit_implicit_return();
-        self.end_scope();
+        self.end_fn_scope();
         self.current_function = old_fn_idx;
         self.emit_instr(Instruction {
             op: OpCode::Constant(LoxVal::Function(self.functions[new_fn_idx].clone())),
