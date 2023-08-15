@@ -12,9 +12,11 @@ pub struct VM {
 }
 
 struct CallFrame {
+    /// Index of the function in the VM functions field.
     function: usize,
     ip: usize,
-    slots: Vec<LoxVal>,
+    /// Index of the stack where the frame starts
+    offset: usize,
 }
 
 impl From<Vec<Function>> for VM {
@@ -26,7 +28,7 @@ impl From<Vec<Function>> for VM {
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: 0, ip: 0, slots: vec![] }
+                CallFrame { function: 0, ip: 0, offset: 0 }
             ],
         }
     }
@@ -70,10 +72,7 @@ impl VM {
             Some(f) => f,
             None => return Err(VMError::IncorrectCurrentFunction),
         };
-        let ip = match self.call_frames.get(self.current_function) {
-            Some(frame) => frame.ip,
-            None => return Err(VMError::IncorrectCurrentFunction),
-        };
+        let ip = self.get_current_frame()?.ip;
         Ok(current_fn.chunk.0.get(ip).map(|instr| instr.clone()))
     }
 
@@ -97,6 +96,30 @@ impl VM {
         }
     }
 
+    fn get_current_frame(&self) -> Result<&CallFrame, VMError> {
+        match self.call_frames.get(self.current_function) {
+            Some(frame) => Ok(frame),
+            None => Err(VMError::IncorrectCurrentFunction),
+        }
+    }
+
+    fn get_current_frame_mut(&mut self) -> Result<&mut CallFrame, VMError> {
+        match self.call_frames.get_mut(self.current_function) {
+            Some(frame) => Ok(frame),
+            None => Err(VMError::IncorrectCurrentFunction),
+        }
+    }
+
+    fn get_local(&self, idx: usize) -> Result<Option<&LoxVal>, VMError> {
+        let current_frame = self.get_current_frame()?;
+        Ok(self.stack.get(current_frame.offset + idx))
+    }
+
+    fn set_local(&mut self, idx: usize, val: LoxVal) -> Result<(), VMError> {
+        let current_frame_offset = self.get_current_frame_mut()?.offset;
+        self.stack[current_frame_offset + idx] = val;
+        Ok(())
+    }
 
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         loop {
@@ -171,7 +194,7 @@ impl VM {
                 }
 
                 OpCode::GetLocal(depth) => {
-                    match self.stack.get(depth) {
+                    match self.get_local(depth)? {
                         Some(val) => self.push_val(val.clone()),
                         None => return Err(VMError::LocalResolutionBug {
                             depth,
@@ -293,13 +316,8 @@ impl VM {
                 }
 
                 OpCode::SetLocal(pos) => {
-                    if pos >= self.stack.len() {
-                        return Err(
-                            VMError::LocalResolutionBug { depth: pos }
-                        );
-                    }
                     match self.peek(0) {
-                        Some(val) => self.stack[pos] = val.clone(),
+                        Some(val) => self.set_local(pos, val.clone())?,
                         None => return Err(VMError::StackExhausted {
                                 line: 0,
                                 details: format!("Tried to set variable at pos {pos}, but peek returned None."),
