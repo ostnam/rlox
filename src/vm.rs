@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function};
 
 pub struct VM {
-    functions: Vec<Function>,
-    current_function: usize,
+    main: Function,
     stack: Vec<LoxVal>,
     globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
@@ -13,22 +12,21 @@ pub struct VM {
 
 struct CallFrame {
     /// Index of the function in the VM functions field.
-    function: usize,
+    function: Function,
     ip: usize,
     /// Index of the stack where the frame starts
     offset: usize,
 }
 
-impl From<Vec<Function>> for VM {
-    fn from(functions: Vec<Function>) -> Self {
+impl From<Function> for VM {
+    fn from(main: Function) -> Self {
         VM {
-            functions,
-            current_function: 0,
+            main: main.clone(),
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: 0, ip: 0, offset: 0 }
+                CallFrame { function: main.clone(), ip: 0, offset: 0 }
             ],
         }
     }
@@ -68,16 +66,14 @@ impl VMError {
 
 impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
-        let current_fn = match self.functions.get(self.current_function) {
-            Some(f) => f,
-            None => return Err(VMError::IncorrectCurrentFunction),
-        };
+        let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
         let ip = self.get_current_frame()?.ip;
         Ok(current_fn.chunk.0.get(ip).map(|instr| instr.clone()))
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
-        match self.call_frames.get_mut(self.current_function) {
+        let last_frame_idx = self.call_frames.len() - 1;
+        match self.call_frames.get_mut(last_frame_idx) {
             Some(frame) => {
                 frame.ip = tgt;
                 Ok(())
@@ -87,7 +83,8 @@ impl VM {
     }
 
     fn increment_ip(&mut self) -> Result<(), VMError> {
-        match self.call_frames.get_mut(self.current_function) {
+        let last_frame_idx = self.call_frames.len() - 1;
+        match self.call_frames.get_mut(last_frame_idx) {
             Some(frame) => {
                 frame.ip += 1;
                 Ok(())
@@ -97,14 +94,15 @@ impl VM {
     }
 
     fn get_current_frame(&self) -> Result<&CallFrame, VMError> {
-        match self.call_frames.get(self.current_function) {
+        match self.call_frames.get(self.call_frames.len() - 1) {
             Some(frame) => Ok(frame),
             None => Err(VMError::IncorrectCurrentFunction),
         }
     }
 
     fn get_current_frame_mut(&mut self) -> Result<&mut CallFrame, VMError> {
-        match self.call_frames.get_mut(self.current_function) {
+        let last_frame_idx = self.call_frames.len() - 1;
+        match self.call_frames.get_mut(last_frame_idx) {
             Some(frame) => Ok(frame),
             None => Err(VMError::IncorrectCurrentFunction),
         }

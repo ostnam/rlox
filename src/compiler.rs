@@ -156,7 +156,7 @@ impl<'a> Compiler<'a> {
         })
     }
 
-    pub fn compile(mut self) -> Result<Vec<Function>, ()> {
+    pub fn compile(mut self) -> Result<Function, ()> {
         self.advance();
         while self.current.is_some() {
             self.declaration();
@@ -166,12 +166,12 @@ impl<'a> Compiler<'a> {
         }
 
         match self.had_error {
-            false => Ok(self.functions),
+            false => Ok(self.functions[0].clone()),
             true => Err(()),
         }
     }
 
-    pub fn compile_expr(mut self) -> Result<Vec<Function>, ()> {
+    pub fn compile_expr(mut self) -> Result<Function, ()> {
         self.advance();
         self.expression();
         if let Err(e) = self.end_compilation() {
@@ -179,7 +179,7 @@ impl<'a> Compiler<'a> {
         }
 
         match self.had_error {
-            false => Ok(self.functions),
+            false => Ok(self.functions[0].clone()),
             true => Err(()),
         }
     }
@@ -1117,18 +1117,18 @@ impl<'a> Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn run_compiler_expr(program: &str) -> Vec<Function> {
+    fn run_compiler_expr(program: &str) -> Function {
         Compiler::new(program).unwrap().compile_expr().unwrap()
     }
 
-    fn run_compiler(program: &str) -> Result<Vec<Function>, ()> {
+    fn run_compiler(program: &str) -> Result<Function, ()> {
         Compiler::new(program).unwrap().compile()
     }
 
     #[test]
     fn compile_number() {
         assert_eq!(
-            run_compiler_expr("10")[0].chunk,
+            run_compiler_expr("10").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
@@ -1139,7 +1139,7 @@ mod tests {
     #[test]
     fn compile_string() {
         assert_eq!(
-            run_compiler_expr(r#""hello lox""#)[0].chunk,
+            run_compiler_expr(r#""hello lox""#).chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello lox".to_string())), line: 1 },
                 Instruction { op: OpCode::Return, line: 1 },
@@ -1150,7 +1150,7 @@ mod tests {
     #[test]
     fn compile_add() {
         assert_eq!(
-            run_compiler_expr("10 + 20 + 30")[0].chunk,
+            run_compiler_expr("10 + 20 + 30").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -1162,7 +1162,7 @@ mod tests {
         );
 
         assert_eq!(
-            run_compiler_expr(r#""hello" + " " + "lox""#)[0].chunk,
+            run_compiler_expr(r#""hello" + " " + "lox""#).chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Str("hello".to_string())), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Str(" ".to_string())), line: 1 },
@@ -1177,7 +1177,7 @@ mod tests {
     #[test]
     fn compile_sub() {
         assert_eq!(
-            run_compiler_expr("10 - 20 - 30")[0].chunk,
+            run_compiler_expr("10 - 20 - 30").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(20.0)), line: 1 },
@@ -1192,7 +1192,7 @@ mod tests {
     #[test]
     fn compile_add_mult() {
         assert_eq!(
-            run_compiler_expr("1 + 2 * 3 + 4")[0].chunk,
+            run_compiler_expr("1 + 2 * 3 + 4").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(2.0)), line: 1 },
@@ -1209,7 +1209,7 @@ mod tests {
     #[test]
     fn compile_minus() {
         assert_eq!(
-            run_compiler_expr("-1")[0].chunk,
+            run_compiler_expr("-1").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1221,7 +1221,7 @@ mod tests {
     #[test]
     fn compile_multiple_prefix() {
         assert_eq!(
-            run_compiler_expr("---1")[0].chunk,
+            run_compiler_expr("---1").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1235,7 +1235,7 @@ mod tests {
     #[test]
     fn compile_prefix_and_infix() {
         assert_eq!(
-            run_compiler_expr("-1 + 2 * 3")[0].chunk,
+            run_compiler_expr("-1 + 2 * 3").chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1251,7 +1251,7 @@ mod tests {
     #[test]
     fn compile_expr_stmt() {
         assert_eq!(
-            run_compiler("-1 + 2 * 3;").unwrap()[0].chunk,
+            run_compiler("-1 + 2 * 3;").unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1268,7 +1268,7 @@ mod tests {
     #[test]
     fn compile_print_stmt() {
         assert_eq!(
-            run_compiler("print -1 + 2 * 3;").unwrap()[0].chunk,
+            run_compiler("print -1 + 2 * 3;").unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 1 },
                 Instruction { op: OpCode::Negate, line: 1 },
@@ -1285,7 +1285,7 @@ mod tests {
     #[test]
     fn compile_global_set() {
         assert_eq!(
-            run_compiler("var x;").unwrap()[0].chunk,
+            run_compiler("var x;").unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Nil), line: 1 },
                 Instruction { op: OpCode::DefineGlobal("x".to_string()), line: 1 },
@@ -1309,7 +1309,7 @@ mod tests {
                         y + 1;
                     }
                 }
-            "#).unwrap()[0].chunk,
+            "#).unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
                 Instruction { op: OpCode::GetLocal(0), line: 5 },
@@ -1342,7 +1342,7 @@ mod tests {
                 if (true) {
                     10;
                 }
-            "#).unwrap()[0].chunk,
+            "#).unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Bool(true)), line: 2 },
                 Instruction { op: OpCode::JumpIfFalse(6), line: 2 },
@@ -1364,7 +1364,7 @@ mod tests {
                 for (var y = 0; y < 10; y = y + 1) {
                     x = y;
                 }
-            "#).unwrap()[0].chunk,
+            "#).unwrap().chunk,
             Chunk(vec![
                 // line 1
                 Instruction { op: OpCode::Constant(LoxVal::Num(0.0)), line: 2 },
@@ -1417,7 +1417,7 @@ mod tests {
                 fun function() {
                     print 2;
                 }
-            "#).unwrap()[0].chunk,
+            "#).unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Function(function)), line: 4 },
                 Instruction { op: OpCode::DefineGlobal("function".to_string()), line: 4 },
