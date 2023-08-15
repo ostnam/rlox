@@ -479,9 +479,9 @@ impl<'a> Compiler<'a> {
         self.advance();
         if self.current_scope_depth > 0 {
             self.locals.push(Local {
-                    name: var_name.clone(),
-                    depth: self.current_scope_depth,
-                    initialized: false,
+                name: var_name.clone(),
+                depth: self.current_scope_depth,
+                initialized: false,
             });
         }
         if self.matches(|t| matches!(t, Token::Eql { .. })) {
