@@ -575,7 +575,7 @@ impl<'a> Compiler<'a> {
         let old_fn_idx = self.current_function;
         let new_fn_idx = self.functions.len() - 1;
         self.current_function = new_fn_idx;
-        self.begin_scope();
+        self.begin_fn_scope();
         self.consume(
             |t| matches!(t, Token::LParen { .. }),
             &CompilationError::Raw {
@@ -650,6 +650,34 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn return_statement(&mut self) {
+        if let FunctionType::Script = self.current_function_type {
+            self.emit_error(&CompilationError::Raw {
+                text: format!("[{}]: return statement outside function", self.current_line),
+            });
+            return;
+        }
+
+        if self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+            self.emit_implicit_return();
+        } else {
+            self.expression();
+            self.consume(
+                |t| matches!(t, Token::Semicolon { .. }),
+                &CompilationError::Raw {
+                    text: format!(
+                        "[{}]: missing ; after return",
+                        self.current_line,
+                    ),
+                }
+            );
+            self.emit_instr(Instruction {
+                op: OpCode::Return,
+                line: self.current_line
+            });
+        }
+    }
+
     fn emit_implicit_return(&mut self) {
         self.emit_instr(Instruction {
             op: OpCode::Constant(LoxVal::Nil),
@@ -703,6 +731,8 @@ impl<'a> Compiler<'a> {
             self.while_statement();
         } else if self.matches(|t| matches!(t, Token::For { .. })) {
             self.for_statement();
+        } else if self.matches(|t| matches!(t, Token::Return { .. })) {
+            self.return_statement();
         } else {
             self.expr_statement();
         }
