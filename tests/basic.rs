@@ -560,4 +560,15 @@ fn test_functions() {
         "#),
         Ok(LoxVal::Num(3.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            fun fib(n) {
+                if (n < 2) return n;
+                return fib(n - 2) + fib(n - 1);
+            }
+
+            fib(3);
+        "#),
+        Ok(LoxVal::Num(3.0)),
+    );
 }

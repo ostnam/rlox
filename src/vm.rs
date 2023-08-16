@@ -414,6 +414,7 @@ impl VM {
                     let frame_start_idx = old_frame.offset - 1;
                     self.stack.truncate(frame_start_idx);
                     self.stack.push(result);
+                    continue;
                 }
             }
 
