@@ -201,7 +201,7 @@ impl VM {
                     let prev_fn_idx = if native_called {
                         self.call_frames.len() - 1
                     } else {
-                        self.call_frames.len() - 1
+                        self.call_frames.len() - 2
                     };
                     match self.call_frames.get_mut(prev_fn_idx) {
                         Some(frame) => frame.ip += 1,
