@@ -413,7 +413,7 @@ impl VM {
                     let old_frame = self.call_frames.pop().unwrap();
                     let frame_start_idx = old_frame.offset - 1;
                     self.stack.truncate(frame_start_idx);
-                    self.stack.push(result);
+                    self.push_val(result);
                     continue;
                 }
             }
