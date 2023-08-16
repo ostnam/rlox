@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable};
+use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef};
 
 pub struct VM {
     main: Function,
@@ -37,7 +37,7 @@ impl From<Function> for VM {
 #[derive(Debug, PartialEq, Eq)]
 pub enum VMError {
     LocalResolutionBug {
-        depth: usize,
+        var_ref: LocalVarRef,
     },
     EndedWithNoReturn,
     StackExhausted {
@@ -115,14 +115,14 @@ impl VM {
         }
     }
 
-    fn get_local(&self, idx: usize) -> Result<Option<&LoxVal>, VMError> {
+    fn get_local(&self, var_ref: &LocalVarRef) -> Result<Option<&LoxVal>, VMError> {
         let current_frame = self.get_current_frame()?;
-        Ok(self.stack.get(current_frame.offset + idx))
+        Ok(self.stack.get(current_frame.offset + var_ref.pos))
     }
 
-    fn set_local(&mut self, idx: usize, val: LoxVal) -> Result<(), VMError> {
+    fn set_local(&mut self, var_ref: &LocalVarRef, val: LoxVal) -> Result<(), VMError> {
         let current_frame_offset = self.get_current_frame_mut()?.offset;
-        self.stack[current_frame_offset + idx] = val;
+        self.stack[current_frame_offset + var_ref.pos] = val;
         Ok(())
     }
 
@@ -254,11 +254,11 @@ impl VM {
                     }
                 }
 
-                OpCode::GetLocal(depth) => {
-                    match self.get_local(depth)? {
+                OpCode::GetLocal(var_ref) => {
+                    match self.get_local(&var_ref)? {
                         Some(val) => self.push_val(val.clone()),
                         None => return Err(VMError::LocalResolutionBug {
-                            depth,
+                            var_ref,
                         }),
                     }
                 }
@@ -376,12 +376,12 @@ impl VM {
                     None => return Err(VMError::stack_exhausted(&instr)),
                 }
 
-                OpCode::SetLocal(pos) => {
+                OpCode::SetLocal(var_ref) => {
                     match self.peek(0) {
-                        Some(val) => self.set_local(pos, val.clone())?,
+                        Some(val) => self.set_local(&var_ref, val.clone())?,
                         None => return Err(VMError::StackExhausted {
                                 line: 0,
-                                details: format!("Tried to set variable at pos {pos}, but peek returned None."),
+                                details: format!("Tried to set variable at pos {var_ref:?}, but peek returned None."),
                         }),
                     }
                 }

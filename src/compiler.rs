@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType};
+use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef};
 use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
 
 #[derive(Debug)]
@@ -9,14 +9,14 @@ pub struct Compiler<'a> {
     had_error: bool,
     panic_mode: bool,
     current_line: u64,
-    locals: Vec<Local>,
+    locals: Vec<Vec<Local>>,
     current_scope_depth: i32,
     functions: Vec<Function>,
     current_function: usize,
     current_function_type: FunctionType,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Local {
     name: String,
     depth: i32,
@@ -149,7 +149,7 @@ impl<'a> Compiler<'a> {
             had_error: false,
             panic_mode: false,
             current_line: 0,
-            locals: vec![],
+            locals: vec![vec![]],
             current_scope_depth: 0,
             functions: vec![main],
             current_function: 0,
@@ -293,9 +293,10 @@ impl<'a> Compiler<'a> {
 
     fn end_scope(&mut self) {
         self.current_scope_depth -= 1;
-        let mut num_valid_locals = self.locals.len();
-        for idx in (0..self.locals.len()).rev() {
-            match self.locals.get(idx) {
+        let current_frame = self.locals[self.locals.len() - 1].clone();
+        let mut num_valid_locals = current_frame.len();
+        for idx in (0..current_frame.len()).rev() {
+            match current_frame.get(idx) {
                 None => continue,
                 Some(var) => {
                     if var.depth <= self.current_scope_depth {
@@ -309,44 +310,50 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
-        self.locals.truncate(num_valid_locals);
+        self.locals.last_mut().map(|v| v.truncate(num_valid_locals));
     }
 
     fn begin_fn_scope(&mut self) {
         self.current_scope_depth += 1;
+        self.locals.push(Vec::new());
     }
 
     fn end_fn_scope(&mut self) {
         self.current_scope_depth -= 1;
-        let mut num_valid_locals = self.locals.len();
-        for idx in (0..self.locals.len()).rev() {
-            match self.locals.get(idx) {
-                None => continue,
-                Some(var) => {
-                    if var.depth <= self.current_scope_depth {
-                        break;
-                    }
-                    num_valid_locals -= 1;
-                }
-            }
+        self.locals.pop();
+    }
+
+    fn declare_local(&mut self, name: &str) {
+        let last_frame = self.locals.last_mut().unwrap();
+        last_frame.push(Local {
+            name: name.to_string(),
+            depth: self.current_scope_depth,
+            initialized: false,
+        });
+    }
+
+    fn init_last_local(&mut self) {
+        match self.locals.last_mut().and_then(|f| f.last_mut()) {
+            Some(var) => var.initialized = true,
+            None => (),
         }
-        self.locals.truncate(num_valid_locals);
     }
 
     /// Takes the name of a local variable, and returns `Some` of the index
     /// on the stack of that variable at runtime if it is a declared local
     /// variable, and `None` otherwise.
-    fn resolve_local(&mut self, name: &str) -> Option<usize> {
+    fn resolve_local(&mut self, name: &str) -> Option<LocalVarRef> {
         // to avoid an underflow when we reach the for loop
         if self.locals.len() == 0 {
             return None;
         }
-        for idx in (0..self.locals.len()).rev() {
-            match self.locals.get(idx) {
+        let current_frame = self.locals.last().unwrap().clone();
+        for pos in (0..current_frame.len()).rev() {
+            match current_frame.get(pos) {
                 None => continue,
                 Some(var) if var.name == name => {
                     if var.initialized {
-                        return Some(idx);
+                        return Some(LocalVarRef { frame: self.locals.len() - 1, pos });
                     } else {
                         self.emit_error(&CompilationError::VariableUsedWhileInit {
                             var_name: name.to_string(),
@@ -500,11 +507,7 @@ impl<'a> Compiler<'a> {
         };
         self.advance();
         if self.current_scope_depth > 0 {
-            self.locals.push(Local {
-                name: var_name.clone(),
-                depth: self.current_scope_depth,
-                initialized: false,
-            });
+            self.declare_local(&var_name);
         }
         if self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
@@ -526,8 +529,7 @@ impl<'a> Compiler<'a> {
                 line,
             })
         } else {
-            let prev = self.locals.pop().expect("BUG: local was removed from the local vec before the end of its declaration");
-            self.locals.push(Local { initialized: true, ..prev });
+            self.init_last_local();
         }
     }
 
@@ -561,11 +563,8 @@ impl<'a> Compiler<'a> {
         // as a local variable so that when we compile the body,
         // the name resolves properly.
         if self.current_scope_depth > 0 {
-            self.locals.push(Local {
-                name: name.clone(),
-                depth: self.current_scope_depth,
-                initialized: true,
-            });
+            self.declare_local(&name);
+            self.init_last_local();
         };
         self.functions.push(Function {
             arity: 0,
@@ -608,11 +607,8 @@ impl<'a> Compiler<'a> {
                         return;
                     },
                 };
-                self.locals.push(Local {
-                    name: arg_name,
-                    depth: self.current_scope_depth,
-                    initialized: true,
-                });
+                self.declare_local(&arg_name);
+                self.init_last_local();
             }
         }
         self.consume(
@@ -1406,8 +1402,8 @@ mod tests {
             "#).unwrap().chunk,
             Chunk(vec![
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
-                Instruction { op: OpCode::GetLocal(0), line: 5 },
-                Instruction { op: OpCode::GetLocal(1), line: 6 },
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 0, pos: 0 }), line: 5 },
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 0, pos: 1 }), line: 6 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 6 },
                 Instruction { op: OpCode::Add, line: 6 },
                 Instruction { op: OpCode::Pop, line: 6 },
@@ -1466,7 +1462,7 @@ mod tests {
                 // var y = 0;
                 Instruction { op: OpCode::Constant(LoxVal::Num(0.0)), line: 3 },
                 // loop condition
-                Instruction { op: OpCode::GetLocal(0), line: 3 },
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 0, pos: 0 }), line: 3 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3 },
                 Instruction { op: OpCode::Less, line: 3 },
                 Instruction { op: OpCode::JumpIfFalse(19), line: 3 },
@@ -1476,16 +1472,16 @@ mod tests {
                 Instruction { op: OpCode::Jump(15), line: 3 },
 
                 // update
-                Instruction { op: OpCode::GetLocal(0), line: 3 },
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 0, pos: 0 }), line: 3 },
                 Instruction { op: OpCode::Constant(LoxVal::Num(1.0)), line: 3 },
                 Instruction { op: OpCode::Add, line: 3 },
-                Instruction { op: OpCode::SetLocal(0), line: 3 },
+                Instruction { op: OpCode::SetLocal(LocalVarRef { frame: 0, pos: 0 }), line: 3 },
                 Instruction { op: OpCode::Pop, line: 3 },
                 // jump to cond
                 Instruction { op: OpCode::Jump(3), line: 3 },
 
                 // body
-                Instruction { op: OpCode::GetLocal(0), line: 4 },
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 0, pos: 0 }), line: 4 },
                 Instruction { op: OpCode::SetGlobal("x".to_string()), line: 4 },
                 Instruction { op: OpCode::Pop, line: 4 },
                 Instruction { op: OpCode::Jump(9), line: 5 },

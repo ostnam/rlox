@@ -1,4 +1,4 @@
-use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode};
+use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef};
 use rlox::vm::VMError;
 
 mod common;
@@ -540,7 +540,7 @@ fn test_functions() {
         Ok(LoxVal::Function(Function {
             arity: 1,
             chunk: Chunk(vec![
-                Instruction { op: OpCode::GetLocal(0), line: 3},
+                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 1, pos: 0 }), line: 3},
                 Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3},
                 Instruction { op: OpCode::Add, line: 3},
                 Instruction { op: OpCode::Pop, line: 3},

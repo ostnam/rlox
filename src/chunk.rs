@@ -81,7 +81,7 @@ pub enum OpCode {
     Divide,
     Equal,
     GetGlobal(String),
-    GetLocal(usize),
+    GetLocal(LocalVarRef),
     Greater,
     Jump(usize),
     JumpIfTrue(usize),
@@ -94,8 +94,14 @@ pub enum OpCode {
     Print,
     Return,
     SetGlobal(String),
-    SetLocal(usize),
+    SetLocal(LocalVarRef),
     Substract,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalVarRef {
+    pub frame: usize,
+    pub pos: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,7 +120,7 @@ impl Display for OpCode {
             OpCode::Divide => "DIVIDE".to_string(),
             OpCode::Equal => "EQUAL".to_string(),
             OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
-            OpCode::GetLocal(pos) => format!("GET LOCAL AT DEPTH: {pos}"),
+            OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
             OpCode::Greater => "GREATER".to_string(),
             OpCode::Jump(jmp_size) => format!("JUMP: {jmp_size} instructions"),
             OpCode::JumpIfFalse(jmp_size) => format!("JUMP IF FALSE: {jmp_size} instructions"),
@@ -127,7 +133,7 @@ impl Display for OpCode {
             OpCode::Print => "PRINT".to_string(),
             OpCode::Return => "RETURN".to_string(),
             OpCode::SetGlobal(name) => format!("SET GLOBAL: {name}"),
-            OpCode::SetLocal(pos) => format!("SET LOCAL AT DEPTH: {pos}"),
+            OpCode::SetLocal(pos) => format!("SET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
             OpCode::Substract => "SUBSTRACT".to_string(),
         };
         write!(f, "{}", name)
