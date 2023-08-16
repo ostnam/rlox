@@ -54,7 +54,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Num(n)  => write!(f, "Num: {n}"),
             LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
             LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
-            LoxVal::NativeFunction(fun)  => write!(f, "Native unction: \"{fun:?}\""),
+            LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
         }
     }
 }
