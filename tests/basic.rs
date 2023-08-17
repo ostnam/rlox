@@ -569,6 +569,85 @@ fn test_functions() {
 
             fib(3);
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(LoxVal::Num(2.0)),
+    );
+}
+
+#[test]
+fn test_closures() {
+    assert_eq!(
+        common::run_program(r#"
+            var x = "global";
+            fun outer() {
+                var x = "outer";
+                    fun inner() {
+                        return x;
+                    }
+                return inner();
+            }
+            outer();
+        "#),
+        Ok(LoxVal::Str("outer".to_string())),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            var x = "global";
+            fun outer() {
+                var x = "not dropped";
+                    fun inner() {
+                        return x;
+                    }
+                return inner;
+            }
+            var z = outer();
+            z();
+        "#),
+        Ok(LoxVal::Str("not dropped".to_string())),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            fun makeClosure(value) {
+                fun closure() {
+                    return value;
+                }
+                return closure;
+            }
+            var a = makeClosure("separate ");
+            var b = makeClosure("variables");
+            a() + b();
+        "#),
+        Ok(LoxVal::Str("separate variables".to_string())),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            fun outer() {
+                var x = "value";
+                fun middle() {
+                    fun inner() {
+                        return x;
+                    }
+                    return inner;
+                }
+                return middle;
+            }
+            var mid = outer();
+            var in = mid();
+            in();
+        "#),
+        Ok(LoxVal::Str("value".to_string())),
+    );
+    assert_eq!(
+        common::run_program(r#"
+        fun outer() {
+            var x = "before";
+            fun inner() {
+                x = "assigned";
+            }
+            inner();
+            return x;
+            }
+        outer();
+        "#),
+        Ok(LoxVal::Str("assigned".to_string())),
     );
 }

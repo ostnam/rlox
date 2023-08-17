@@ -347,21 +347,23 @@ impl<'a> Compiler<'a> {
         if self.locals.len() == 0 {
             return None;
         }
-        let current_frame = self.locals.last().unwrap().clone();
-        for pos in (0..current_frame.len()).rev() {
-            match current_frame.get(pos) {
-                None => continue,
-                Some(var) if var.name == name => {
-                    if var.initialized {
-                        return Some(LocalVarRef { frame: self.locals.len() - 1, pos });
-                    } else {
-                        self.emit_error(&CompilationError::VariableUsedWhileInit {
-                            var_name: name.to_string(),
-                            line: self.current_line,
-                        });
+        for frame in (0..self.locals.len()).rev() {
+            let current_frame = self.locals[frame].clone();
+            for pos in (0..current_frame.len()).rev() {
+                match current_frame.get(pos) {
+                    None => continue,
+                    Some(var) if var.name == name => {
+                        if var.initialized {
+                            return Some(LocalVarRef { frame, pos });
+                        } else {
+                            self.emit_error(&CompilationError::VariableUsedWhileInit {
+                                var_name: name.to_string(),
+                                line: self.current_line,
+                            });
+                        }
                     }
+                    Some(_) => continue,
                 }
-                Some(_) => continue,
             }
         }
         None
@@ -633,12 +635,16 @@ impl<'a> Compiler<'a> {
         self.emit_implicit_return();
         self.end_fn_scope();
         self.current_function = old_fn_idx;
-        self.emit_instr(Instruction {
-            op: OpCode::Constant(LoxVal::Function(self.functions[new_fn_idx].clone())),
-            line: self.current_line,
-        });
-
-        if self.current_scope_depth == 0 {
+        if self.current_scope_depth > 0 {
+            self.emit_instr(Instruction {
+                op: OpCode::Closure(self.functions[new_fn_idx].clone()),
+                line: self.current_line,
+            });
+        } else {
+            self.emit_instr(Instruction {
+                op: OpCode::Constant(LoxVal::Function(self.functions[new_fn_idx].clone())),
+                line: self.current_line,
+            });
             self.emit_instr(Instruction {
                 op: OpCode::DefineGlobal(name),
                 line: self.current_line,

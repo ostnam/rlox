@@ -77,11 +77,13 @@ pub enum OpCode {
     Add,
     Call(u8),
     Constant(LoxVal),
+    Closure(Function),
     DefineGlobal(String),
     Divide,
     Equal,
     GetGlobal(String),
     GetLocal(LocalVarRef),
+    GetUpval(usize),
     Greater,
     Jump(usize),
     JumpIfTrue(usize),
@@ -95,6 +97,7 @@ pub enum OpCode {
     Return,
     SetGlobal(String),
     SetLocal(LocalVarRef),
+    SetUpval(usize),
     Substract,
 }
 
@@ -115,12 +118,14 @@ impl Display for OpCode {
         let name = match self {
             OpCode::Add => "ADD".to_string(),
             OpCode::Call(args) => format!("CALL WITH {args} args"),
+            OpCode::Closure(f) => format!("CLOSURE: {}", f.name),
             OpCode::Constant(idx) => format!("CONSTANT {idx}"),
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
             OpCode::Divide => "DIVIDE".to_string(),
             OpCode::Equal => "EQUAL".to_string(),
             OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
             OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
+            OpCode::GetUpval(pos) => format!("GET UPVAL IDX: {pos}"),
             OpCode::Greater => "GREATER".to_string(),
             OpCode::Jump(jmp_size) => format!("JUMP: {jmp_size} instructions"),
             OpCode::JumpIfFalse(jmp_size) => format!("JUMP IF FALSE: {jmp_size} instructions"),
@@ -134,6 +139,7 @@ impl Display for OpCode {
             OpCode::Return => "RETURN".to_string(),
             OpCode::SetGlobal(name) => format!("SET GLOBAL: {name}"),
             OpCode::SetLocal(pos) => format!("SET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
+            OpCode::SetUpval(pos) => format!("SET UPVAL IDX: {pos}"),
             OpCode::Substract => "SUBSTRACT".to_string(),
         };
         write!(f, "{}", name)

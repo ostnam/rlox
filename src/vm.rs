@@ -4,10 +4,27 @@ use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Call
 
 pub struct VM {
     main: Function,
-    stack: Vec<LoxVal>,
+    stack: Vec<LocalVar>,
     globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
+    ref_resolver: Vec<RefStatus>,
+}
+
+struct LocalVar {
+    val: LoxVal,
+    upval_idx: Option<usize>,
+}
+
+enum RefStatus {
+    OnStack(usize),
+    OnHeap(LoxVal),
+}
+
+impl From<LoxVal> for LocalVar {
+    fn from(val: LoxVal) -> Self {
+        LocalVar { val, upval_idx: None }
+    }
 }
 
 struct CallFrame {
@@ -30,6 +47,7 @@ impl From<Function> for VM {
             call_frames: vec![
                 CallFrame { function: main.clone(), ip: 0, offset: 0 }
             ],
+            ref_resolver: Vec::new(),
         }
     }
 }
@@ -117,21 +135,74 @@ impl VM {
 
     fn get_local(&self, var_ref: &LocalVarRef) -> Result<Option<&LoxVal>, VMError> {
         let current_frame = self.get_current_frame()?;
-        Ok(self.stack.get(current_frame.offset + var_ref.pos))
+        Ok(self.stack.get(current_frame.offset + var_ref.pos).map(|x| &x.val))
     }
 
     fn set_local(&mut self, var_ref: &LocalVarRef, val: LoxVal) -> Result<(), VMError> {
         let current_frame_offset = self.get_current_frame_mut()?.offset;
-        self.stack[current_frame_offset + var_ref.pos] = val;
+        self.stack[current_frame_offset + var_ref.pos].val = val;
         Ok(())
+    }
+
+    /// Reads every instruction of a function, to modify accesses to
+    /// closed-over variables, into a Get/SetUpval instruction.
+    fn resolve_closure(&mut self, closure: &mut Function) {
+        let current_frame = self.call_frames.len();
+        for instr in closure.chunk.0.iter_mut() {
+            match &mut instr.op {
+                OpCode::GetLocal(var) if var.frame != current_frame => {
+                    let upval_idx = self.register_upval(var);
+                    instr.op = OpCode::GetUpval(upval_idx);
+                }
+                OpCode::SetLocal(var) if var.frame != current_frame  => {
+                    let upval_idx = self.register_upval(&var);
+                    instr.op = OpCode::SetUpval(upval_idx);
+                }
+                OpCode::Closure(f) => {
+                    self.resolve_closure(f);
+                    instr.op = OpCode::Constant(LoxVal::Function(f.clone()));
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    /// Registers a new UpVal.
+    /// The pointed-to value's `is_closed_over` field will be set to `true`,
+    /// and the index of the upval returned.
+    fn register_upval(&mut self, var_ref: &LocalVarRef) -> usize {
+        let var_frame_offset = self.call_frames[var_ref.frame].offset;
+        let var_stack_idx = var_frame_offset + var_ref.pos;
+        self.ref_resolver.push(
+            RefStatus::OnStack(var_stack_idx)
+        );
+        let upval_idx = self.ref_resolver.len() - 1;
+        self.stack[var_stack_idx].upval_idx = Some(upval_idx);
+        upval_idx
+    }
+
+    /// Reads the variable with the upval index, from the stack or the heap.
+    fn read_upval(&self, ref_idx: usize) -> LoxVal {
+        match &self.ref_resolver[ref_idx] {
+            RefStatus::OnStack(idx) => self.stack[*idx].val.clone(),
+            RefStatus::OnHeap(value) => value.clone(),
+        }
+    }
+
+    /// Sets the variable with the upval index, on the stack or the heap.
+    fn set_upval(&mut self, ref_idx: usize, val: LoxVal) {
+        match self.ref_resolver.get_mut(ref_idx).unwrap() {
+            RefStatus::OnStack(idx) => self.stack[*idx].val = val,
+            v@RefStatus::OnHeap(_) => *v = RefStatus::OnHeap(val),
+        }
     }
 
     fn get_called_fn(&self, n_args: u8) -> Result<Callable, VMError> {
         let last_arg_idx = self.stack.len() - 1;
         let fn_idx = last_arg_idx - n_args as usize;
-        match self.stack.get(fn_idx) {
+        match self.stack.get(fn_idx).map(|x| x.val.clone()) {
             Some(LoxVal::Function(f)) => Ok(Callable::Function(f.clone())),
-            Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(*f)),
+            Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(f)),
             Some(other) => Err(VMError::TypeError {
                 line: 0,
                 expected: "callable".to_string(),
@@ -210,6 +281,11 @@ impl VM {
                     continue;
                 },
 
+                OpCode::Closure(mut f) => {
+                    self.resolve_closure(&mut f);
+                    self.push_val(LoxVal::Function(f));
+                }
+
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
                 OpCode::DefineGlobal(ref name) => match self.pop_val() {
@@ -261,6 +337,10 @@ impl VM {
                             var_ref,
                         }),
                     }
+                }
+
+                OpCode::GetUpval(upval_idx) => {
+                    self.push_val(self.read_upval(upval_idx))
                 }
 
                 OpCode::Greater => match (self.pop_val(), self.pop_val()) {
@@ -356,9 +436,7 @@ impl VM {
                     _ => return Err(VMError::stack_exhausted(&instr)),
                 }
 
-                OpCode::Pop => {
-                    self.pop_val();
-                },
+                OpCode::Pop => self.pop_var(),
 
                 OpCode::Print => match self.pop_val() {
                     Some(val) => println!("{val}"),
@@ -386,6 +464,15 @@ impl VM {
                     }
                 }
 
+                OpCode::SetUpval(upval_idx) => {
+                    match self.peek(0) {
+                        Some(val) => self.set_upval(upval_idx, val.clone()),
+                        None => return Err(VMError::StackExhausted {
+                                line: 0,
+                                details: format!("Tried to set variable at pos but peek returned None."),
+                        }),
+                    }
+                }
 
                 OpCode::Substract => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
@@ -407,12 +494,14 @@ impl VM {
 
                 OpCode::Return => {
                     if self.call_frames.len() == 1 {
-                        return Ok(self.stack.pop().unwrap_or(self.last_val.clone()));
+                        return Ok(self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone()));
                     }
                     let result = self.pop_val().unwrap();
                     let old_frame = self.call_frames.pop().unwrap();
-                    let frame_start_idx = old_frame.offset - 1;
-                    self.stack.truncate(frame_start_idx);
+                    for _ in old_frame.offset..self.stack.len() {
+                        self.pop_var();
+                    }
+                    self.pop_val();
                     self.push_val(result);
                     continue;
                 }
@@ -426,15 +515,24 @@ impl VM {
 
     fn push_val(&mut self, val: LoxVal) {
         self.last_val = val.clone();
-        self.stack.push(val);
+        self.stack.push(val.into());
     }
 
     fn pop_val(&mut self) -> Option<LoxVal> {
-        self.stack.pop()
+        self.stack.pop().map(|x| x.val)
+    }
+
+    fn pop_var(&mut self) {
+        match self.stack.pop() {
+            Some(LocalVar { upval_idx: Some(idx), val }) => {
+                self.ref_resolver[idx] = RefStatus::OnHeap(val);
+            }
+            _ => (),
+        }
     }
 
     fn peek(&self, depth: usize) -> Option<&LoxVal> {
-        self.stack.get(self.stack.len() - 1 - depth)
+        self.stack.get(self.stack.len() - 1 - depth).map(|x| &x.val)
     }
 
     fn apply_native(
@@ -444,7 +542,11 @@ impl VM {
     ) -> Result<(), VMError> {
         let frame_end = self.stack.len();
         let frame_start = frame_end - n_args as usize;
-        let result = f(&self.stack[frame_start..frame_end])?;
+        let args: Vec<LoxVal> = self.stack[frame_start..frame_end]
+            .iter()
+            .map(|x| x.val.clone())
+            .collect();
+        let result = f(args.as_slice())?;
         self.stack.truncate(frame_start);
         self.push_val(result);
         Ok(())
