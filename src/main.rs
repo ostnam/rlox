@@ -27,7 +27,7 @@ fn repl() {
         stdout.flush().expect("error flushing stdout");
         let res = stdin.read_line(&mut buffer);
         if let Err(e) = res {
-            println!("");
+            println!();
             panic!("Error reading input line: {}", e);
         }
         match run::run_program(&buffer) {

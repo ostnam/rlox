@@ -382,7 +382,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_instr(&mut self, instr: Instruction) {
-        self.functions.get_mut(self.current_function).map(|f| f.chunk.0.push(instr));
+        if let Some(f) = self.functions.get_mut(self.current_function) {
+            f.chunk.0.push(instr);
+        }
     }
 
     fn parse_precedence(&mut self, precedence: PrecedenceLvl) {
@@ -590,9 +592,9 @@ impl<'a> Compiler<'a> {
             let mut first = true;
             while first || self.matches(|t| matches!(t, Token::Comma { .. })) {
                 first = false;
-                self.functions
-                    .get_mut(self.current_function)
-                    .map(|f| f.arity += 1);
+                if let Some(f) = self.functions.get_mut(self.current_function) {
+                    f.arity += 1;
+                }
                 let arg_name = match &self.current {
                     Some(Token::Identifier { name, .. }) => {
                         let name = name.clone();

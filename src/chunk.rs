@@ -21,14 +21,14 @@ pub enum Callable {
 
 impl LoxVal {
     pub fn type_name(&self) -> String {
-    match self {
-            LoxVal::Bool(_) => "bool".to_string(),
-            LoxVal::Nil     => "nil".to_string(),
-            LoxVal::Num(_)  => "number".to_string(),
-            LoxVal::Str(_)  => "string".to_string(),
-            LoxVal::Function(_)  => format!("function"),
-            LoxVal::NativeFunction(_)  => format!("function (builtin)"),
-        }
+        match self {
+            LoxVal::Bool(_) => "bool",
+            LoxVal::Nil     => "nil",
+            LoxVal::Num(_)  => "number",
+            LoxVal::Str(_)  => "string",
+            LoxVal::Function(_)  => "function",
+            LoxVal::NativeFunction(_)  => "function (builtin)",
+        }.to_string()
     }
 
     pub fn cast_to_bool(self) -> LoxVal {
