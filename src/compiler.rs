@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef};
+use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef, Class};
 use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
 
 #[derive(Debug)]
@@ -464,6 +464,8 @@ impl<'a> Compiler<'a> {
             self.var_declaration();
         } else if self.matches(|t| matches!(t, Token::Fun { .. })) {
             self.function_declaration();
+        } else if self.matches(|t| matches!(t, Token::Class { .. })) {
+            self.class_declaration();
         } else {
             self.statement();
         }
@@ -653,6 +655,55 @@ impl<'a> Compiler<'a> {
             });
         }
     }
+
+    fn class_declaration(&mut self) {
+        let class_name = match &self.current {
+            Some(Token::Identifier { name, .. }) => {
+                let name = name.clone();
+                self.advance();
+                name.clone()
+            },
+            _ => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: expected class name after 'class'.",
+                        self.current_line,
+                )});
+                return;
+            },
+        };
+        if self.current_scope_depth > 0 {
+            self.declare_local(&class_name);
+        } else {
+        };
+        self.emit_instr(Instruction {
+            op: OpCode::Class(Class {
+                name: class_name.clone()
+            }),
+            line: self.current_line,
+        });
+        if self.current_scope_depth > 0 {
+            self.init_last_local();
+        } else {
+            self.emit_instr(Instruction {
+                op: OpCode::DefineGlobal(class_name.clone()),
+                line: self.current_line,
+            });
+        };
+        self.consume(
+            |t| matches!(t, Token::LBrace { .. }),
+            &CompilationError::Raw{
+                text: format!("[{}]: missing {{ after class name", self.current_line),
+            },
+        );
+        self.consume(
+            |t| matches!(t, Token::RBrace { .. }),
+            &CompilationError::Raw{
+                text: format!("[{}]: missing }} after class body", self.current_line),
+            },
+        );
+    }
+
 
     fn return_statement(&mut self) {
         if let FunctionType::Script = self.current_function_type {

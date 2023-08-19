@@ -281,6 +281,8 @@ impl VM {
                     continue;
                 },
 
+                OpCode::Class(cls) => self.push_val(LoxVal::Class(cls)),
+
                 OpCode::Closure(mut f) => {
                     self.resolve_closure(&mut f);
                     self.push_val(LoxVal::Function(f));

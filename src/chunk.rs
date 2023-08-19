@@ -10,6 +10,12 @@ pub enum LoxVal {
     Str(String),
     Function(Function),
     NativeFunction(NativeFunction),
+    Class(Class),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Class {
+    pub name: String,
 }
 
 type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
@@ -28,6 +34,7 @@ impl LoxVal {
             LoxVal::Str(_)  => "string",
             LoxVal::Function(_)  => "function",
             LoxVal::NativeFunction(_)  => "function (builtin)",
+            LoxVal::Class(_)  => "class",
         }.to_string()
     }
 
@@ -55,6 +62,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
             LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
             LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
+            LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
         }
     }
 }
@@ -68,6 +76,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Str(s)  => write!(f, "{s}"),
             LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
+            LoxVal::Class(cls)  => write!(f, "<class: {}>", cls.name),
         }
     }
 }
@@ -77,6 +86,7 @@ pub enum OpCode {
     Add,
     Call(u8),
     Constant(LoxVal),
+    Class(Class),
     Closure(Function),
     DefineGlobal(String),
     Divide,
@@ -118,6 +128,7 @@ impl Display for OpCode {
         let name = match self {
             OpCode::Add => "ADD".to_string(),
             OpCode::Call(args) => format!("CALL WITH {args} args"),
+            OpCode::Class(cls) => format!("CLASS: {}", cls.name),
             OpCode::Closure(f) => format!("CLOSURE: {}", f.name),
             OpCode::Constant(idx) => format!("CONSTANT {idx}"),
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),

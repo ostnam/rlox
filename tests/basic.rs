@@ -1,4 +1,4 @@
-use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef};
+use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef, Class};
 use rlox::vm::VMError;
 
 mod common;
@@ -649,5 +649,16 @@ fn test_closures() {
         outer();
         "#),
         Ok(LoxVal::Str("assigned".to_string())),
+    );
+}
+
+#[test]
+fn test_classes() {
+    assert_eq!(
+        common::run_program(r#"
+            class C {}
+            C;
+        "#),
+        Ok(LoxVal::Class(Class { name: "C".to_string()})),
     );
 }
