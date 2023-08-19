@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, collections::HashMap};
 
 use crate::vm::VMError;
 
@@ -11,6 +11,7 @@ pub enum LoxVal {
     Function(Function),
     NativeFunction(NativeFunction),
     Class(Class),
+    Instance(ClassInstance),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,24 +19,41 @@ pub struct Class {
     pub name: String,
 }
 
+impl Class {
+    pub fn new_instance(&self) -> ClassInstance {
+        ClassInstance {
+            class: self.clone(),
+            fields: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClassInstance {
+    pub class: Class,
+    pub fields: HashMap<String, LoxVal>,
+}
+
 type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
 
 pub enum Callable {
     Function(Function),
     NativeFunction(NativeFunction),
+    Class(Class),
 }
 
 impl LoxVal {
     pub fn type_name(&self) -> String {
         match self {
-            LoxVal::Bool(_) => "bool",
-            LoxVal::Nil     => "nil",
-            LoxVal::Num(_)  => "number",
-            LoxVal::Str(_)  => "string",
-            LoxVal::Function(_)  => "function",
-            LoxVal::NativeFunction(_)  => "function (builtin)",
-            LoxVal::Class(_)  => "class",
-        }.to_string()
+            LoxVal::Bool(_) => "bool".to_string(),
+            LoxVal::Nil     => "nil".to_string(),
+            LoxVal::Num(_)  => "number".to_string(),
+            LoxVal::Str(_)  => "string".to_string(),
+            LoxVal::Function(_)  => "function".to_string(),
+            LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
+            LoxVal::Class(_)  => "class".to_string(),
+            LoxVal::Instance(inst)  => format!("instance of class: {}", inst.class.name),
+        }
     }
 
     pub fn cast_to_bool(self) -> LoxVal {
@@ -63,6 +81,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
             LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
             LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
+            LoxVal::Instance(val)  => write!(f, "Class instance: \"{val:?}\""),
         }
     }
 }
@@ -77,6 +96,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
             LoxVal::Class(cls)  => write!(f, "<class: {}>", cls.name),
+            LoxVal::Instance(instance)  => write!(f, "<instance of class: {}>", instance.class.name),
         }
     }
 }

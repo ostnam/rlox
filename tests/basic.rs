@@ -661,4 +661,11 @@ fn test_classes() {
         "#),
         Ok(LoxVal::Class(Class { name: "C".to_string()})),
     );
+    assert!(matches!(
+        common::run_program(r#"
+            class C {}
+            var x = C();
+        "#),
+        Ok(LoxVal::Instance(_)),
+    ));
 }

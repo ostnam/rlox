@@ -203,6 +203,7 @@ impl VM {
         match self.stack.get(fn_idx).map(|x| x.val.clone()) {
             Some(LoxVal::Function(f)) => Ok(Callable::Function(f.clone())),
             Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(f)),
+            Some(LoxVal::Class(cls)) => Ok(Callable::Class(cls)),
             Some(other) => Err(VMError::TypeError {
                 line: 0,
                 expected: "callable".to_string(),
@@ -248,9 +249,10 @@ impl VM {
                 }
 
                 OpCode::Call(n_args) => {
-                    let mut native_called = false;
+                    let mut frame_added = false;
                     match self.get_called_fn(n_args)? {
                         Callable::Function(f) => {
+                            frame_added = true;
                             if f.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
                                     expected: f.arity,
@@ -264,15 +266,20 @@ impl VM {
                                 offset: self.stack.len() - n_args as usize,
                             });
                         },
+                        Callable::Class(cls) => {
+                            self.pop_val();
+                            self.push_val(
+                                LoxVal::Instance(cls.new_instance())
+                            );
+                        },
                         Callable::NativeFunction(f) => {
-                            native_called = true;
                             self.apply_native(f, n_args)?;
                         }
                     };
-                    let prev_fn_idx = if native_called {
-                        self.call_frames.len() - 1
-                    } else {
+                    let prev_fn_idx = if frame_added {
                         self.call_frames.len() - 2
+                    } else {
+                        self.call_frames.len() - 1
                     };
                     match self.call_frames.get_mut(prev_fn_idx) {
                         Some(frame) => frame.ip += 1,
