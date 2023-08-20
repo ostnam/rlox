@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef, Class};
+use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef};
 use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
 
 #[derive(Debug)]
