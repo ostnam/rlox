@@ -668,4 +668,26 @@ fn test_classes() {
         "#),
         Ok(LoxVal::Instance(_)),
     ));
+    assert_eq!(
+        common::run_program(r#"
+            class C {}
+            var x = C();
+            x.a = 1;
+            x.b = 2;
+            x.a + x.b;
+        "#),
+        Ok(LoxVal::Num(3.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            class C {}
+            var x = C();
+            var y = C();
+            y.b = 2;
+            x.a = y;
+            x.a.b = 3;
+            x.a.b - 2;
+        "#),
+        Ok(LoxVal::Num(1.0)),
+    );
 }

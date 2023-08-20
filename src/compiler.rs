@@ -64,8 +64,7 @@ impl From<&Token> for PrecedenceLvl {
             | Token::This { .. }
             | Token::True { .. }
             | Token::Var { .. }
-            | Token::While { .. }
-            | Token::Dot { .. } => PrecedenceLvl::Null,
+            | Token::While { .. } => PrecedenceLvl::Null,
 
             Token::Or { .. } => PrecedenceLvl::Or,
             Token::And { .. } => PrecedenceLvl::And,
@@ -84,7 +83,8 @@ impl From<&Token> for PrecedenceLvl {
             Token::Slash { .. }
             | Token::Star { .. } => PrecedenceLvl::Factor,
 
-            Token::LParen { .. } => PrecedenceLvl::Call,
+            Token::LParen { .. }
+            | Token::Dot { .. } => PrecedenceLvl::Call,
         }
     }
 }
@@ -982,6 +982,37 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn dot(&mut self, can_assign: bool) {
+        let field_name = match &self.current {
+            Some(Token::Identifier { name, .. }) => {
+                let name = name.clone();
+                self.advance();
+                name
+            },
+            _ => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: expected identifier after .",
+                        self.current_line,
+                    ),
+                });
+                return;
+            },
+        };
+        if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+            self.expression();
+            self.emit_instr(Instruction {
+                op: OpCode::SetProperty(field_name),
+                line: self.current_line
+            });
+        } else {
+            self.emit_instr(Instruction {
+                op: OpCode::GetProperty(field_name),
+                line: self.current_line
+            });
+        }
+    }
+
     fn expr_statement(&mut self) {
         self.expression();
         self.consume(
@@ -1225,7 +1256,6 @@ impl<'a> Compiler<'a> {
             Token::LBrace { .. } => (),
             Token::RBrace { .. } => (),
             Token::Comma { .. } => (),
-            Token::Dot { .. } => (),
             Token::Semicolon { .. } => (),
             Token::Bang { .. } => (),
             Token::Eql { .. } => (),
@@ -1259,6 +1289,7 @@ impl<'a> Compiler<'a> {
             | Token::Less { .. }
             | Token::LessEql { .. } => self.binary(can_assign),
             Token::LParen { .. } => self.call(can_assign),
+            Token::Dot { .. } => self.dot(can_assign),
         }
     }
 }

@@ -1,3 +1,4 @@
+pub mod arena;
 pub mod compiler;
 pub mod chunk;
 pub mod run;

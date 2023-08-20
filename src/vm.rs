@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef};
+use crate::arena::Arena;
+use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef, ClassInstance};
 
 pub struct VM {
     main: Function,
@@ -9,6 +10,7 @@ pub struct VM {
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
     ref_resolver: Vec<RefStatus>,
+    instances: Arena<ClassInstance>,
 }
 
 struct LocalVar {
@@ -48,6 +50,7 @@ impl From<Function> for VM {
                 CallFrame { function: main.clone(), ip: 0, offset: 0 }
             ],
             ref_resolver: Vec::new(),
+            instances: Arena::new(),
         }
     }
 }
@@ -77,7 +80,10 @@ pub enum VMError {
         expected: u8,
         got: u8,
         line: u64,
-    }
+    },
+    UndefinedProperty {
+        prop_name: String,
+    },
 }
 
 impl VMError {
@@ -268,8 +274,9 @@ impl VM {
                         },
                         Callable::Class(cls) => {
                             self.pop_val();
+                            let inst_ref = self.instances.insert(cls.new_instance());
                             self.push_val(
-                                LoxVal::Instance(cls.new_instance())
+                                LoxVal::Instance(inst_ref)
                             );
                         },
                         Callable::NativeFunction(f) => {
@@ -346,6 +353,29 @@ impl VM {
                             var_ref,
                         }),
                     }
+                }
+
+                OpCode::GetProperty(prop_name) => {
+                    let inst_ref = match self.peek(0) {
+                        Some(LoxVal::Instance(r)) => r.clone(),
+                        Some(other) => return Err(VMError::TypeError {
+                            line: 0,
+                            expected: "instance".to_string(),
+                            got: other.type_name(),
+                            details: "can only read properties of class instances".to_string(),
+                        }),
+                        None => return Err(VMError::StackExhausted {
+                                line: 0,
+                                details: String::new(),
+                        }),
+                    };
+                    self.pop_var();
+                    match self.instances.get(&inst_ref).fields.get(&prop_name) {
+                        Some(val) => {
+                            self.push_val(val.clone());
+                        }
+                        None => return Err(VMError::UndefinedProperty { prop_name }),
+                    };
                 }
 
                 OpCode::GetUpval(upval_idx) => {
@@ -471,6 +501,32 @@ impl VM {
                                 details: format!("Tried to set variable at pos {var_ref:?}, but peek returned None."),
                         }),
                     }
+                }
+
+                OpCode::SetProperty(prop_name) => {
+                    let inst = match self.peek(1) {
+                        Some(LoxVal::Instance(v)) => v.clone(),
+                        Some(other) => return Err(VMError::TypeError {
+                            line: 0,
+                            expected: "instance".to_string(),
+                            got: other.type_name(),
+                            details: "can only set properties on class instances".to_string(),
+                        }),
+                        None => return Err(VMError::StackExhausted {
+                                line: 0,
+                                details: String::new(),
+                        }),
+                    };
+                    let val = match self.pop_val() {
+                        Some(v) => v,
+                        None => return Err(VMError::StackExhausted {
+                                line: 0,
+                                details: String::new(),
+                        }),
+                    };
+                    self.pop_val();
+                    self.instances.get_mut(&inst).fields.insert(prop_name, val.clone());
+                    self.push_val(val);
                 }
 
                 OpCode::SetUpval(upval_idx) => {

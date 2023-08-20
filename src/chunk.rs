@@ -1,5 +1,6 @@
 use std::{fmt::Display, collections::HashMap};
 
+use crate::arena::Ref;
 use crate::vm::VMError;
 
 #[derive(Clone, PartialEq)]
@@ -11,7 +12,7 @@ pub enum LoxVal {
     Function(Function),
     NativeFunction(NativeFunction),
     Class(Class),
-    Instance(ClassInstance),
+    Instance(Ref<ClassInstance>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,7 +53,7 @@ impl LoxVal {
             LoxVal::Function(_)  => "function".to_string(),
             LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
-            LoxVal::Instance(inst)  => format!("instance of class: {}", inst.class.name),
+            LoxVal::Instance(inst)  => format!("instance"),
         }
     }
 
@@ -96,7 +97,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
             LoxVal::Class(cls)  => write!(f, "<class: {}>", cls.name),
-            LoxVal::Instance(instance)  => write!(f, "<instance of class: {}>", instance.class.name),
+            LoxVal::Instance(_)  => write!(f, "<class instance>"),
         }
     }
 }
@@ -111,6 +112,7 @@ pub enum OpCode {
     DefineGlobal(String),
     Divide,
     Equal,
+    GetProperty(String),
     GetGlobal(String),
     GetLocal(LocalVarRef),
     GetUpval(usize),
@@ -125,6 +127,7 @@ pub enum OpCode {
     Pop,
     Print,
     Return,
+    SetProperty(String),
     SetGlobal(String),
     SetLocal(LocalVarRef),
     SetUpval(usize),
@@ -154,6 +157,7 @@ impl Display for OpCode {
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
             OpCode::Divide => "DIVIDE".to_string(),
             OpCode::Equal => "EQUAL".to_string(),
+            OpCode::GetProperty(name) => format!("GET PROPERTY: {name}"),
             OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
             OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
             OpCode::GetUpval(pos) => format!("GET UPVAL IDX: {pos}"),
@@ -168,6 +172,7 @@ impl Display for OpCode {
             OpCode::Pop => "POP".to_string(),
             OpCode::Print => "PRINT".to_string(),
             OpCode::Return => "RETURN".to_string(),
+            OpCode::SetProperty(name) => format!("SET PROPERTY: {name}"),
             OpCode::SetGlobal(name) => format!("SET GLOBAL: {name}"),
             OpCode::SetLocal(pos) => format!("SET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
             OpCode::SetUpval(pos) => format!("SET UPVAL IDX: {pos}"),
