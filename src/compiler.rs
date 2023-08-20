@@ -310,7 +310,9 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
-        self.locals.last_mut().map(|v| v.truncate(num_valid_locals));
+        if let Some(v) = self.locals.last_mut() {
+            v.truncate(num_valid_locals);
+        };
     }
 
     fn begin_fn_scope(&mut self) {
@@ -344,7 +346,7 @@ impl<'a> Compiler<'a> {
     /// variable, and `None` otherwise.
     fn resolve_local(&mut self, name: &str) -> Option<LocalVarRef> {
         // to avoid an underflow when we reach the for loop
-        if self.locals.len() == 0 {
+        if self.locals.is_empty() {
             return None;
         }
         for frame in (0..self.locals.len()).rev() {

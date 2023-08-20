@@ -5,7 +5,6 @@ use crate::chunk::Class;
 use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef, ClassInstance};
 
 pub struct VM {
-    main: Function,
     stack: Vec<LocalVar>,
     globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
@@ -43,12 +42,11 @@ struct CallFrame {
 impl From<Function> for VM {
     fn from(main: Function) -> Self {
         VM {
-            main: main.clone(),
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: main.clone(), ip: 0, offset: 0 }
+                CallFrame { function: main, ip: 0, offset: 0 }
             ],
             ref_resolver: Vec::new(),
             instances: Arena::new(),
@@ -100,7 +98,7 @@ impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
         let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
         let ip = self.get_current_frame()?.ip;
-        Ok(current_fn.chunk.0.get(ip).map(|instr| instr.clone()))
+        Ok(current_fn.chunk.0.get(ip).cloned())
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
@@ -121,12 +119,12 @@ impl VM {
                 frame.ip += 1;
                 Ok(())
             }
-            None => return Err(VMError::IncorrectCurrentFunction),
+            None => Err(VMError::IncorrectCurrentFunction),
         }
     }
 
     fn get_current_frame(&self) -> Result<&CallFrame, VMError> {
-        match self.call_frames.get(self.call_frames.len() - 1) {
+        match self.call_frames.last() {
             Some(frame) => Ok(frame),
             None => Err(VMError::IncorrectCurrentFunction),
         }
@@ -162,7 +160,7 @@ impl VM {
                     instr.op = OpCode::GetUpval(upval_idx);
                 }
                 OpCode::SetLocal(var) if var.frame != current_frame  => {
-                    let upval_idx = self.register_upval(&var);
+                    let upval_idx = self.register_upval(var);
                     instr.op = OpCode::SetUpval(upval_idx);
                 }
                 OpCode::Closure(f) => {
@@ -219,17 +217,13 @@ impl VM {
             }),
             None => Err(VMError::StackExhausted {
                 line: 0,
-                details: format!("stack exhausted trying to get the function being called."),
+                details: String::from("stack exhausted trying to get the function being called."),
             }),
         }
     }
 
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
-        loop {
-            let instr = match self.get_current_instr()? {
-                Some(instr) => instr,
-                None => break,
-            };
+        while let Some(instr) = self.get_current_instr()? {
             match instr.op {
                 OpCode::Add => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l+r)),
@@ -421,7 +415,7 @@ impl VM {
                 OpCode::JumpIfTrue(tgt) => {
                     match self.peek(0).map(|v| v.clone().cast_to_bool()) {
                         Some(LoxVal::Bool(true)) => {
-                            self.set_ip(tgt);
+                            self.set_ip(tgt)?;
                             continue;
                         }
                         _ => (),
@@ -538,7 +532,7 @@ impl VM {
                         Some(val) => self.set_upval(upval_idx, val.clone()),
                         None => return Err(VMError::StackExhausted {
                                 line: 0,
-                                details: format!("Tried to set variable at pos but peek returned None."),
+                                details: String::from("Tried to set variable at pos but peek returned None."),
                         }),
                     }
                 }

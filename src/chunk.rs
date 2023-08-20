@@ -54,7 +54,7 @@ impl LoxVal {
             LoxVal::Function(_)  => "function".to_string(),
             LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
-            LoxVal::Instance(inst)  => format!("instance"),
+            LoxVal::Instance(_)  => format!("instance"),
         }
     }
 

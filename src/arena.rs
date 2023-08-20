@@ -48,3 +48,9 @@ impl<T> Arena<T> {
         &mut self.heap[key.idx]
     }
 }
+
+impl<T> Default for Arena<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
