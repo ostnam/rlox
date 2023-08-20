@@ -544,6 +544,7 @@ impl<'a> Compiler<'a> {
         name: String,
         fn_type: FunctionType,
     ) {
+        let old_fn_type = self.current_function_type;
         self.current_function_type = fn_type;
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
@@ -622,6 +623,7 @@ impl<'a> Compiler<'a> {
                 line: self.current_line,
             });
         }
+        self.current_function_type = old_fn_type;
     }
 
     fn class_declaration(&mut self) {
