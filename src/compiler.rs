@@ -657,20 +657,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn class_declaration(&mut self) {
-        let class_name = match &self.current {
-            Some(Token::Identifier { name, .. }) => {
-                let name = name.clone();
-                self.advance();
-                name.clone()
-            },
-            _ => {
-                self.emit_error(&CompilationError::Raw {
-                    text: format!(
-                        "[{}]: expected class name after 'class'.",
-                        self.current_line,
-                )});
-                return;
-            },
+        let class_name = match self.identifier("after 'class'") {
+            Some(s) => s,
+            None => return,
         };
         if self.current_scope_depth > 0 {
             self.declare_local(&class_name);
@@ -1176,6 +1165,28 @@ impl<'a> Compiler<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// If the next token is a `Token::Identifier`, returns its `String`.
+    /// Otherwise, return `None`, after emitting an error about a missing
+    /// identifier in the given `ctx`.
+    fn identifier(&mut self, ctx: &str) -> Option<String> {
+        match &self.current {
+            Some(Token::Identifier { name, .. }) => {
+                let name = name.clone();
+                self.advance();
+                Some(name)
+            },
+            _ => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: expected identifier {ctx}.",
+                        self.current_line,
+                )});
+
+                None
+            },
         }
     }
 
