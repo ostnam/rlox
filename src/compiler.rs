@@ -498,20 +498,10 @@ impl<'a> Compiler<'a> {
 
     // The var keyword must already have been matched.
     fn var_declaration(&mut self) {
-        let (var_name, line) = match &self.current {
-            Some(Token::Identifier { name, line }) => (name.clone(), *line),
-            other => {
-                self.emit_error(&CompilationError::Raw {
-                    text: format!(
-                      "[{}]: Expected variable name after keyword var but got: {:?}",
-                      self.current_line,
-                      other,
-                  )
-                });
-                return;
-            }
+        let var_name = match self.identifier("after var keyword") {
+            Some(s) => s,
+            None => return,
         };
-        self.advance();
         if self.current_scope_depth > 0 {
             self.declare_local(&var_name);
         }
@@ -532,7 +522,7 @@ impl<'a> Compiler<'a> {
         if self.current_scope_depth == 0 {
             self.emit_instr(Instruction {
                 op: OpCode::DefineGlobal(var_name),
-                line,
+                line: self.current_line,
             })
         } else {
             self.init_last_local();
@@ -540,21 +530,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn function_declaration(&mut self) {
-        let fn_name = match &self.current {
-            Some(Token::Identifier { name, .. }) => {
-                let name = name.clone();
-                self.advance();
-                name
-            },
-            _ => {
-                self.emit_error(&CompilationError::Raw {
-                    text: format!(
-                        "[{}]: function with no name",
-                        self.current_line,
-                    ),
-                });
-                return;
-            },
+        let fn_name = match self.identifier("after fun") {
+            Some(s) => s,
+            _ => return,
         };
         self.function(fn_name, FunctionType::Regular);
     }
@@ -597,21 +575,9 @@ impl<'a> Compiler<'a> {
                 if let Some(f) = self.functions.get_mut(self.current_function) {
                     f.arity += 1;
                 }
-                let arg_name = match &self.current {
-                    Some(Token::Identifier { name, .. }) => {
-                        let name = name.clone();
-                        self.advance();
-                        name
-                    },
-                    _ => {
-                        self.emit_error(&CompilationError::Raw {
-                            text: format!(
-                                "[{}] expected parameter name",
-                                self.current_line,
-                            ),
-                        });
-                        return;
-                    },
+                let arg_name = match self.identifier("in parameters list") {
+                    Some(s) => s,
+                    None => return,
                 };
                 self.declare_local(&arg_name);
                 self.init_last_local();
@@ -971,21 +937,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn dot(&mut self, can_assign: bool) {
-        let field_name = match &self.current {
-            Some(Token::Identifier { name, .. }) => {
-                let name = name.clone();
-                self.advance();
-                name
-            },
-            _ => {
-                self.emit_error(&CompilationError::Raw {
-                    text: format!(
-                        "[{}]: expected identifier after .",
-                        self.current_line,
-                    ),
-                });
-                return;
-            },
+        let field_name = match self.identifier("after .") {
+            Some(n) => n,
+            None => return,
         };
         if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
