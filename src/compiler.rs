@@ -677,9 +677,7 @@ impl<'a> Compiler<'a> {
         } else {
         };
         self.emit_instr(Instruction {
-            op: OpCode::Class(Class {
-                name: class_name.clone()
-            }),
+            op: OpCode::Class(class_name.clone()),
             line: self.current_line,
         });
         if self.current_scope_depth > 0 {
@@ -696,12 +694,13 @@ impl<'a> Compiler<'a> {
                 text: format!("[{}]: missing {{ after class name", self.current_line),
             },
         );
-        self.consume(
-            |t| matches!(t, Token::RBrace { .. }),
-            &CompilationError::Raw{
-                text: format!("[{}]: missing }} after class body", self.current_line),
-            },
-        );
+        while !self.matches(|t| matches!(t, Token::RBrace { .. })) {
+            if let None = self.current {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!("[{}]: missing }} after class declaration", self.current_line),
+                });
+            }
+        }
     }
 
 

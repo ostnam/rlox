@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::arena::Arena;
+use crate::chunk::Class;
 use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef, ClassInstance};
 
 pub struct VM {
@@ -295,7 +296,10 @@ impl VM {
                     continue;
                 },
 
-                OpCode::Class(cls) => self.push_val(LoxVal::Class(cls)),
+                OpCode::Class(name) => self.push_val(LoxVal::Class(Class {
+                    name,
+                    methods: HashMap::new(),
+                })),
 
                 OpCode::Closure(mut f) => {
                     self.resolve_closure(&mut f);

@@ -18,6 +18,7 @@ pub enum LoxVal {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
     pub name: String,
+    pub methods: HashMap<String, Function>,
 }
 
 impl Class {
@@ -107,7 +108,7 @@ pub enum OpCode {
     Add,
     Call(u8),
     Constant(LoxVal),
-    Class(Class),
+    Class(String),
     Closure(Function),
     DefineGlobal(String),
     Divide,
@@ -151,7 +152,7 @@ impl Display for OpCode {
         let name = match self {
             OpCode::Add => "ADD".to_string(),
             OpCode::Call(args) => format!("CALL WITH {args} args"),
-            OpCode::Class(cls) => format!("CLASS: {}", cls.name),
+            OpCode::Class(cls) => format!("CLASS: {}", cls),
             OpCode::Closure(f) => format!("CLOSURE: {}", f.name),
             OpCode::Constant(idx) => format!("CONSTANT {idx}"),
             OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
