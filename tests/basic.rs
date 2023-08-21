@@ -698,6 +698,18 @@ fn test_classes() {
             var x = C();
             x.f;
         "#),
-        Ok(LoxVal::BoundMethod(_, _)),
+        Ok(LoxVal::BoundMethod(_)),
     ));
+    assert_eq!(
+        common::run_program(r#"
+            class C {
+                f(a, b) {
+                    return a - b;
+                }
+            }
+            var x = C();
+            x.f(1, 2) + 10;
+        "#),
+        Ok(LoxVal::Num(9.0)),
+    );
 }

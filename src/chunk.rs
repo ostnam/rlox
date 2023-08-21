@@ -13,7 +13,7 @@ pub enum LoxVal {
     NativeFunction(NativeFunction),
     Class(Ref<Class>),
     Instance(Ref<ClassInstance>),
-    BoundMethod(Function, Ref<ClassInstance>),
+    BoundMethod(Ref<BoundMethod>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,12 +37,19 @@ pub struct ClassInstance {
     pub fields: HashMap<String, LoxVal>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoundMethod {
+    pub this: Ref<ClassInstance>,
+    pub method: Function,
+}
+
 type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
 
 pub enum Callable {
     Function(Function),
     NativeFunction(NativeFunction),
     Class(Ref<Class>),
+    Method(Ref<BoundMethod>),
 }
 
 impl LoxVal {
@@ -56,7 +63,7 @@ impl LoxVal {
             LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
             LoxVal::Instance(_)  => format!("instance"),
-            LoxVal::BoundMethod(_, _)  => format!("method"),
+            LoxVal::BoundMethod(_)  => format!("method"),
         }
     }
 
@@ -86,7 +93,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
             LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
             LoxVal::Instance(val)  => write!(f, "Class instance: \"{val:?}\""),
-            LoxVal::BoundMethod(m, _) => write!(f, "Bound method: {m:?}"),
+            LoxVal::BoundMethod(m) => write!(f, "Bound method: {m:?}"),
         }
     }
 }
@@ -102,7 +109,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
             LoxVal::Class(_)  => write!(f, "<class>"),
             LoxVal::Instance(_)  => write!(f, "<class instance>"),
-            LoxVal::BoundMethod(_, _)  => write!(f, "<method>"),
+            LoxVal::BoundMethod(_)  => write!(f, "<method>"),
         }
     }
 }

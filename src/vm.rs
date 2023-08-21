@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::arena::Arena;
-use crate::chunk::Class;
+use crate::chunk::{Class, BoundMethod};
 use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef, ClassInstance};
 
 pub struct VM {
@@ -12,6 +12,7 @@ pub struct VM {
     ref_resolver: Vec<RefStatus>,
     classes: Arena<Class>,
     instances: Arena<ClassInstance>,
+    methods: Arena<BoundMethod>,
 }
 
 struct LocalVar {
@@ -52,6 +53,7 @@ impl From<Function> for VM {
             ref_resolver: Vec::new(),
             classes: Arena::new(),
             instances: Arena::new(),
+            methods: Arena::new(),
         }
     }
 }
@@ -203,6 +205,7 @@ impl VM {
             Some(LoxVal::Function(f)) => Ok(Callable::Function(f.clone())),
             Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(f)),
             Some(LoxVal::Class(cls)) => Ok(Callable::Class(cls)),
+            Some(LoxVal::BoundMethod(m)) => Ok(Callable::Method(m)),
             Some(other) => Err(VMError::TypeError {
                 line: 0,
                 expected: "callable".to_string(),
@@ -270,7 +273,23 @@ impl VM {
                         },
                         Callable::NativeFunction(f) => {
                             self.apply_native(f, n_args)?;
-                        }
+                        },
+                        Callable::Method(m) => {
+                            frame_added = true;
+                            let method = self.methods.get(m);
+                            if method.method.arity != n_args {
+                                return Err(VMError::IncorrectArgCount {
+                                    expected: method.method.arity,
+                                    got: n_args,
+                                    line: 0
+                                });
+                            }
+                            self.call_frames.push(CallFrame {
+                                function: method.method.clone(),
+                                ip: 0,
+                                offset: self.stack.len() - n_args as usize,
+                            });
+                        },
                     };
                     let prev_fn_idx = if frame_added {
                         self.call_frames.len() - 2
@@ -371,8 +390,15 @@ impl VM {
                             self.push_val(val.clone());
                         }
                         None => match inst.class.methods.get(&prop_name) {
-                                Some(val) => self.push_val(LoxVal::BoundMethod(val.clone(), inst_ref)),
-                                None => return Err(VMError::UndefinedProperty { prop_name }),
+                            Some(val) => {
+                                let method = BoundMethod {
+                                    this: inst_ref,
+                                    method: val.clone(),
+                                };
+                                let meth_ref = self.methods.insert(method);
+                                self.push_val(LoxVal::BoundMethod(meth_ref));
+                            },
+                            None => return Err(VMError::UndefinedProperty { prop_name }),
                         }
                     };
                 }
