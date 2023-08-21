@@ -161,7 +161,7 @@ impl VM {
                 }
                 OpCode::Closure(f) => {
                     self.resolve_closure(f);
-                    instr.op = OpCode::Constant(LoxVal::Function(f.clone()));
+                    instr.op = OpCode::Closure(f.clone());
                 }
                 _ => continue,
             }
@@ -264,9 +264,18 @@ impl VM {
                             });
                         },
                         Callable::Class(cls) => {
-                            self.pop_val()?;
                             let class = self.classes.get(cls);
                             let inst_ref = self.instances.insert(class.new_instance());
+                            if let Some(init) = self.classes.get(cls).methods.get("init") {
+                                frame_added = true;
+                                self.call_frames.push(CallFrame {
+                                    function: init.clone(),
+                                    ip: 0,
+                                    offset: self.stack.len() - init.arity as usize,
+                                });
+                            } else {
+                                self.pop_val()?;
+                            }
                             self.push_val(
                                 LoxVal::Instance(inst_ref)
                             );
@@ -289,6 +298,7 @@ impl VM {
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
                             });
+                            self.push_val(LoxVal::Instance(method.this));
                         },
                     };
                     let prev_fn_idx = if frame_added {
@@ -459,13 +469,13 @@ impl VM {
                 },
 
                 OpCode::Method(name) => {
-                    let meth = match self.peek(0)? {
+                    let meth = match self.pop_val()? {
                         LoxVal::Function(f) => f.clone(),
                         other => return Err(VMError::Bug(
                             format!("non-function: {other:?} was on stack in method position during methods declarations"),
                         )),
                     };
-                    let cls = match self.peek(1)? {
+                    let cls = match self.peek(0)? {
                         LoxVal::Class(cls) => cls,
                         other => return Err(VMError::Bug(
                             format!("non-class: {other:?} was on stack in class position during methods declarations"),
@@ -473,7 +483,6 @@ impl VM {
                     };
                     let class = self.classes.get_mut(*cls);
                     class.methods.insert(name, meth);
-                    self.pop_val()?;
                 },
 
                 OpCode::Multiply => match (self.pop_val()?, self.pop_val()?) {

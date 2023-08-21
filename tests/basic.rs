@@ -712,4 +712,66 @@ fn test_classes() {
         "#),
         Ok(LoxVal::Num(9.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            class C {
+                init() {
+                    this.x = 10;
+                }
+            }
+            var c = C();
+            c.x + 5;
+        "#),
+        Ok(LoxVal::Num(15.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            class C {
+                init (x) {
+                    this.x = x;
+                }
+                f() {
+                    var old = this.x;
+                    return old;
+                }
+            }
+            var c = C(10);
+            c.f() + 5;
+        "#),
+        Ok(LoxVal::Num(15.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            class Nested {
+                method() {
+                    fun function() {
+                        return this.x;
+                    }
+                    return function;
+                }
+            }
+            var i = Nested();
+            i.x = 10;
+            var m = i.method();
+            m() + 5.0;
+        "#),
+        Ok(LoxVal::Num(15.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            fun f(x) {
+                class C {
+                    method() {
+                        return this.x + x;
+                    }
+                }
+                var c = C();
+                c.x = 2;
+                return c;
+            }
+            var a = f(1);
+            a.method();
+        "#),
+        Ok(LoxVal::Num(3.0)),
+    );
 }

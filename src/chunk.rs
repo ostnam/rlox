@@ -240,6 +240,7 @@ pub enum FunctionType {
     Regular,
     Script,
     Method,
+    Ctor,
 }
 
 #[cfg(test)]

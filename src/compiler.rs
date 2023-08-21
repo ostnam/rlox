@@ -542,14 +542,21 @@ impl<'a> Compiler<'a> {
                 self.init_last_local();
             }
         }
+        if fn_type == FunctionType::Method || fn_type == FunctionType::Ctor {
+            self.declare_local("this");
+            self.init_last_local();
+        }
         consume!(self, Token::RParen, "missing ) after function args");
         consume!(self, Token::LBrace, "missing { after function args");
         self.block();
         self.emit_implicit_return();
         self.end_fn_scope();
         self.current_function = old_fn_idx;
-        if self.current_scope_depth > 0 || self.current_function_type == FunctionType::Method {
+        if self.current_scope_depth > 0 {
             self.emit_instr(OpCode::Closure(self.functions[new_fn_idx].clone()));
+        } else if fn_type == FunctionType::Method || fn_type == FunctionType::Ctor {
+            self.emit_instr(
+                OpCode::Closure(self.functions[new_fn_idx].clone()));
         } else {
             self.emit_instr(OpCode::Constant(
                 LoxVal::Function(self.functions[new_fn_idx].clone())
@@ -580,7 +587,9 @@ impl<'a> Compiler<'a> {
             }
             self.method();
         }
-        self.emit_instr(OpCode::Pop);
+        if self.current_scope_depth == 0 {
+            self.emit_instr(OpCode::Pop);
+        }
     }
 
     fn method(&mut self) {
@@ -588,17 +597,25 @@ impl<'a> Compiler<'a> {
             Some(s) => s,
             None => return,
         };
-        self.function(name.clone(), FunctionType::Method);
+        let fn_type = if name == "init" {
+            FunctionType::Ctor
+        } else {
+            FunctionType::Method
+        };
+        self.function(name.clone(), fn_type);
         self.emit_instr(OpCode::Method(name));
     }
 
 
     fn return_statement(&mut self) {
-        if let FunctionType::Script = self.current_function_type {
-            self.emit_error(&CompilationError::Raw {
-                text: format!("[{}]: return statement outside function", self.current_line),
-            });
-            return;
+        match self.current_function_type {
+            FunctionType::Script | FunctionType::Ctor => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!("[{}]: return statement not allowed in this context", self.current_line),
+                });
+                return;
+            },
+            _ => (),
         }
 
         if tok_matches!(self, Token::Semicolon) {
@@ -611,8 +628,17 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_implicit_return(&mut self) {
-        self.emit_instr(OpCode::Constant(LoxVal::Nil));
-        self.emit_instr(OpCode::Return);
+        match self.current_function_type {
+            FunctionType::Ctor => {
+                let pos = self.resolve_local("this").unwrap();
+                self.emit_instr(OpCode::GetLocal(pos));
+                self.emit_instr(OpCode::Return);
+            }
+            _ => {
+                self.emit_instr(OpCode::Constant(LoxVal::Nil));
+                self.emit_instr(OpCode::Return);
+            }
+        }
     }
 
     fn call(&mut self, _can_assign: bool) {
@@ -885,6 +911,18 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn this(&mut self) {
+        match self.resolve_local("this") {
+            Some(pos) => self.emit_instr(OpCode::GetLocal(pos)),
+            None => self.emit_error(&CompilationError::Raw {
+                text: format!(
+                    "[{}]: 'this' used outside of method",
+                    self.current_line,
+                )
+            }),
+        }
+    }
+
     /// If the next token is a `Token::Identifier`, returns its `String`.
     /// Otherwise, return `None`, after emitting an error about a missing
     /// identifier in the given `ctx`.
@@ -967,7 +1005,10 @@ impl<'a> Compiler<'a> {
             Token::Print { .. } => Err(()),
             Token::Return { .. } => Err(()),
             Token::Super { .. } => Err(()),
-            Token::This { .. } => Err(()),
+            Token::This { .. } => {
+                self.this();
+                Ok(())
+            },
             Token::True { .. } => {
                 self.literal(can_assign);
                 Ok(())
