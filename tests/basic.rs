@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef, Class};
+use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef};
 use rlox::vm::VMError;
 
 mod common;
@@ -692,4 +690,14 @@ fn test_classes() {
         "#),
         Ok(LoxVal::Num(1.0)),
     );
+    assert!(matches!(
+        common::run_program(r#"
+            class C {
+                f() {}
+            }
+            var x = C();
+            x.f;
+        "#),
+        Ok(LoxVal::BoundMethod(_, _)),
+    ));
 }

@@ -58,6 +58,7 @@ impl From<Function> for VM {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VMError {
+    Bug(String),
     LocalResolutionBug {
         var_ref: LocalVarRef,
     },
@@ -364,11 +365,15 @@ impl VM {
                         }),
                     };
                     self.pop_var();
-                    match self.instances.get(inst_ref).fields.get(&prop_name) {
+                    let inst = self.instances.get(inst_ref);
+                    match inst.fields.get(&prop_name) {
                         Some(val) => {
                             self.push_val(val.clone());
                         }
-                        None => return Err(VMError::UndefinedProperty { prop_name }),
+                        None => match inst.class.methods.get(&prop_name) {
+                                Some(val) => self.push_val(LoxVal::BoundMethod(val.clone(), inst_ref)),
+                                None => return Err(VMError::UndefinedProperty { prop_name }),
+                        }
                     };
                 }
 
@@ -428,7 +433,21 @@ impl VM {
                 },
 
                 OpCode::Method(name) => {
-                    let meth = self.peek(0);
+                    let meth = match self.peek(0)? {
+                        LoxVal::Function(f) => f.clone(),
+                        other => return Err(VMError::Bug(
+                            format!("non-function: {other:?} was on stack in method position during methods declarations"),
+                        )),
+                    };
+                    let cls = match self.peek(1)? {
+                        LoxVal::Class(cls) => cls,
+                        other => return Err(VMError::Bug(
+                            format!("non-class: {other:?} was on stack in class position during methods declarations"),
+                        )),
+                    };
+                    let class = self.classes.get_mut(*cls);
+                    class.methods.insert(name, meth);
+                    self.pop_val()?;
                 },
 
                 OpCode::Multiply => match (self.pop_val()?, self.pop_val()?) {

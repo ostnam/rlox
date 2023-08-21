@@ -513,7 +513,7 @@ impl<'a> Compiler<'a> {
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
         // the name resolves properly.
-        if self.current_scope_depth > 0 {
+        if self.current_scope_depth > 0 && fn_type == FunctionType::Regular {
             self.declare_local(&name);
             self.init_last_local();
         };
@@ -548,7 +548,7 @@ impl<'a> Compiler<'a> {
         self.emit_implicit_return();
         self.end_fn_scope();
         self.current_function = old_fn_idx;
-        if self.current_scope_depth > 0 {
+        if self.current_scope_depth > 0 || self.current_function_type == FunctionType::Method {
             self.emit_instr(OpCode::Closure(self.functions[new_fn_idx].clone()));
         } else {
             self.emit_instr(OpCode::Constant(
@@ -580,6 +580,16 @@ impl<'a> Compiler<'a> {
             }
             self.method();
         }
+        self.emit_instr(OpCode::Pop);
+    }
+
+    fn method(&mut self) {
+        let name = match self.identifier("for method name") {
+            Some(s) => s,
+            None => return,
+        };
+        self.function(name.clone(), FunctionType::Method);
+        self.emit_instr(OpCode::Method(name));
     }
 
 

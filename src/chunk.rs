@@ -13,6 +13,7 @@ pub enum LoxVal {
     NativeFunction(NativeFunction),
     Class(Ref<Class>),
     Instance(Ref<ClassInstance>),
+    BoundMethod(Function, Ref<ClassInstance>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,17 +56,18 @@ impl LoxVal {
             LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
             LoxVal::Instance(_)  => format!("instance"),
+            LoxVal::BoundMethod(_, _)  => format!("method"),
         }
     }
 
-    pub fn cast_to_bool(self) -> LoxVal {
+    pub fn cast_to_bool(&self) -> LoxVal {
         match self {
             LoxVal::Nil | LoxVal::Bool(false) => LoxVal::Bool(false),
             _ => LoxVal::Bool(true),
         }
     }
 
-    pub fn cast_to_not_bool(self) -> LoxVal {
+    pub fn cast_to_not_bool(&self) -> LoxVal {
         match self {
             LoxVal::Nil | LoxVal::Bool(false) => LoxVal::Bool(true),
             _ => LoxVal::Bool(false),
@@ -84,6 +86,7 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
             LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
             LoxVal::Instance(val)  => write!(f, "Class instance: \"{val:?}\""),
+            LoxVal::BoundMethod(m, _) => write!(f, "Bound method: {m:?}"),
         }
     }
 }
@@ -99,6 +102,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
             LoxVal::Class(_)  => write!(f, "<class>"),
             LoxVal::Instance(_)  => write!(f, "<class instance>"),
+            LoxVal::BoundMethod(_, _)  => write!(f, "<method>"),
         }
     }
 }
@@ -123,6 +127,7 @@ pub enum OpCode {
     JumpIfTrue(usize),
     JumpIfFalse(usize),
     Less,
+    Method(String),
     Multiply,
     Negate,
     Not,
@@ -169,6 +174,7 @@ impl Display for OpCode {
             OpCode::JumpIfFalse(jmp_size) => format!("JUMP IF FALSE: {jmp_size} instructions"),
             OpCode::JumpIfTrue(jmp_size) => format!("JUMP IF TRUE: {jmp_size} instructions"),
             OpCode::Less => "LESS".to_string(),
+            OpCode::Method(name) => format!("METHOD: {name}"),
             OpCode::Multiply => "MULTIPLY".to_string(),
             OpCode::Negate => "NEGATE".to_string(),
             OpCode::Not => "NOT".to_string(),
@@ -222,10 +228,11 @@ impl std::fmt::Debug for Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FunctionType {
     Regular,
     Script,
+    Method,
 }
 
 #[cfg(test)]
