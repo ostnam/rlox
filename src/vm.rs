@@ -361,17 +361,13 @@ impl VM {
                 }
 
                 OpCode::GetProperty(prop_name) => {
-                    let inst_ref = match self.peek(0) {
-                        Some(LoxVal::Instance(r)) => r.clone(),
-                        Some(other) => return Err(VMError::TypeError {
+                    let inst_ref = match self.peek(0)? {
+                        LoxVal::Instance(r) => r.clone(),
+                        other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "instance".to_string(),
                             got: other.type_name(),
                             details: "can only read properties of class instances".to_string(),
-                        }),
-                        None => return Err(VMError::StackExhausted {
-                                line: 0,
-                                details: String::new(),
                         }),
                     };
                     self.pop_var();
@@ -410,22 +406,16 @@ impl VM {
                 }
 
                 OpCode::JumpIfFalse(tgt) => {
-                    match self.peek(0).map(|v| v.clone().cast_to_bool()) {
-                        Some(LoxVal::Bool(false)) => {
-                            self.set_ip(tgt)?;
-                            continue;
-                        }
-                        _ => (),
+                    if let LoxVal::Bool(false) = self.peek(0)?.cast_to_bool() {
+                        self.set_ip(tgt)?;
+                        continue;
                     }
                 },
 
                 OpCode::JumpIfTrue(tgt) => {
-                    match self.peek(0).map(|v| v.clone().cast_to_bool()) {
-                        Some(LoxVal::Bool(true)) => {
-                            self.set_ip(tgt)?;
-                            continue;
-                        }
-                        _ => (),
+                    if let LoxVal::Bool(true) = self.peek(0)?.cast_to_bool() {
+                        self.set_ip(tgt)?;
+                        continue;
                     }
                 },
 
@@ -487,39 +477,29 @@ impl VM {
                     _ => return Err(VMError::stack_exhausted(&instr)),
                 }
 
-                OpCode::SetGlobal(ref var) => match self.peek(0) {
-                    Some(val) if self.globals.contains_key(var.as_str()) => {
-                        self.globals.insert(var.clone(), val.clone());
-                    },
-                    Some(_) => return Err(VMError::UndefinedVariable {
-                        line: 0,
-                        name: var.clone(),
-                    }),
-                    None => return Err(VMError::stack_exhausted(&instr)),
-                }
-
-                OpCode::SetLocal(var_ref) => {
-                    match self.peek(0) {
-                        Some(val) => self.set_local(&var_ref, val.clone())?,
-                        None => return Err(VMError::StackExhausted {
-                                line: 0,
-                                details: format!("Tried to set variable at pos {var_ref:?}, but peek returned None."),
+                OpCode::SetGlobal(ref var) => {
+                    match self.globals.insert(var.clone(), self.peek(0)?.clone()) {
+                        Some(_) => (),
+                        None => return Err(VMError::UndefinedVariable {
+                            line: 0,
+                            name: var.clone(),
                         }),
                     }
                 }
 
+                OpCode::SetLocal(var_ref) => {
+                    let val = self.peek(0)?;
+                    self.set_local(&var_ref, val.clone())?;
+                }
+
                 OpCode::SetProperty(prop_name) => {
-                    let inst = match self.peek(1) {
-                        Some(LoxVal::Instance(v)) => v.clone(),
-                        Some(other) => return Err(VMError::TypeError {
+                    let inst = match self.peek(1)? {
+                        LoxVal::Instance(v) => v.clone(),
+                        other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "instance".to_string(),
                             got: other.type_name(),
                             details: "can only set properties on class instances".to_string(),
-                        }),
-                        None => return Err(VMError::StackExhausted {
-                                line: 0,
-                                details: String::new(),
                         }),
                     };
                     let val = match self.pop_val() {
@@ -534,15 +514,7 @@ impl VM {
                     self.push_val(val);
                 }
 
-                OpCode::SetUpval(upval_idx) => {
-                    match self.peek(0) {
-                        Some(val) => self.set_upval(upval_idx, val.clone()),
-                        None => return Err(VMError::StackExhausted {
-                                line: 0,
-                                details: String::from("Tried to set variable at pos but peek returned None."),
-                        }),
-                    }
-                }
+                OpCode::SetUpval(upval_idx) => self.set_upval(upval_idx, self.peek(0)?.clone()),
 
                 OpCode::Substract => match (self.pop_val(), self.pop_val()) {
                     (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
@@ -601,8 +573,17 @@ impl VM {
         }
     }
 
-    fn peek(&self, depth: usize) -> Option<&LoxVal> {
-        self.stack.get(self.stack.len() - 1 - depth).map(|x| &x.val)
+    fn peek(&self, depth: usize) -> Result<&LoxVal, VMError> {
+        match self.stack.get(self.stack.len() - 1 - depth) {
+            Some(v) => Ok(&v.val),
+            None => Err(VMError::StackExhausted {
+                line: 0,
+                details: format!(
+                    "tried to peek {depth} values deep but stack.len() == {}",
+                    self.stack.len(),
+                ),
+            }),
+        }
     }
 
     fn apply_native(
