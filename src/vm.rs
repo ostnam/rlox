@@ -87,15 +87,6 @@ pub enum VMError {
     },
 }
 
-impl VMError {
-    fn stack_exhausted(instruction: &Instruction) -> Self {
-        Self::StackExhausted{
-            line: instruction.line,
-            details: format!("for instruction: {}", instruction.op),
-        }
-    }
-}
-
 impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
         let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
