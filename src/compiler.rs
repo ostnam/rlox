@@ -134,6 +134,18 @@ enum CompilationError {
     },
 }
 
+/// More concise way to call `Compiler::consume`.
+macro_rules! consume {
+    ($self:ident, $tok_type:path, $msg:literal) => {
+        $self.consume(
+            |t| matches!(t, $tok_type { .. }),
+            &CompilationError::Raw {
+                text: format!("[{}]: {}", $self.current_line, $msg),
+            }
+        );
+    };
+}
+
 impl<'a> Compiler<'a> {
     pub fn new(src: &'a str) -> Result<Self, ScannerInitError> {
         let scanner = Scanner::new(src)?;
@@ -255,7 +267,8 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    // Return whether the consumption was successful.
+    /// Generally, you should use this method through the `consume!()` macro
+    /// as it requires less boilerplate.
     fn consume<F: Fn(&Token) -> bool>(
         &mut self,
         f: F,
@@ -427,10 +440,7 @@ impl<'a> Compiler<'a> {
     // assumes the leading '(' has already been consumed
     fn grouping(&mut self, _can_assign: bool) {
         self.expression();
-        self.consume(
-            |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::UnclosedParens { line: self.current_line },
-        )
+        consume!(self, Token::RParen, "unclosed parens");
     }
 
     fn unary(&mut self, _can_assign: bool) {
@@ -494,12 +504,7 @@ impl<'a> Compiler<'a> {
         } else {
             self.emit_instr(OpCode::Constant(LoxVal::Nil));
         }
-        self.consume(
-            |t| matches!(t, Token::Semicolon { .. }),
-            &CompilationError::Raw{
-                text: format!("[{}]: Missing semicolon after variable declaration.", self.current_line),
-            },
-        );
+        consume!(self, Token::Semicolon, "missing semicolon after variable declaration");
         if self.current_scope_depth == 0 {
             self.emit_instr(OpCode::DefineGlobal(var_name));
         } else {
@@ -538,15 +543,7 @@ impl<'a> Compiler<'a> {
         let new_fn_idx = self.functions.len() - 1;
         self.current_function = new_fn_idx;
         self.begin_fn_scope();
-        self.consume(
-            |t| matches!(t, Token::LParen { .. }),
-            &CompilationError::Raw {
-                text: format!(
-                    "[{}] missing ( after function name",
-                    self.current_line,
-                ),
-            },
-        );
+        consume!(self, Token::LParen, "missing ( after function name");
         if !matches!(self.current, Some(Token::RParen { .. })) {
             let mut first = true;
             while first || self.matches(|t| matches!(t, Token::Comma { .. })) {
@@ -562,24 +559,8 @@ impl<'a> Compiler<'a> {
                 self.init_last_local();
             }
         }
-        self.consume(
-            |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::Raw {
-                text: format!(
-                    "[{}] missing ) after function args",
-                    self.current_line,
-                ),
-            },
-        );
-        self.consume(
-            |t| matches!(t, Token::LBrace { .. }),
-            &CompilationError::Raw {
-                text: format!(
-                    "[{}] missing {{ after function args",
-                    self.current_line,
-                ),
-            },
-        );
+        consume!(self, Token::RParen, "missing ) after function args");
+        consume!(self, Token::LBrace, "missing { after function args");
         self.block();
         self.emit_implicit_return();
         self.end_fn_scope();
@@ -609,12 +590,7 @@ impl<'a> Compiler<'a> {
         } else {
             self.emit_instr(OpCode::DefineGlobal(class_name.clone()));
         }
-        self.consume(
-            |t| matches!(t, Token::LBrace { .. }),
-            &CompilationError::Raw{
-                text: format!("[{}]: missing {{ after class name", self.current_line),
-            },
-        );
+        consume!(self, Token::LBrace, "missing { after class name");
         while !self.matches(|t| matches!(t, Token::RBrace { .. })) {
             if let None = self.current {
                 self.emit_error(&CompilationError::Raw {
@@ -638,15 +614,7 @@ impl<'a> Compiler<'a> {
             self.emit_implicit_return();
         } else {
             self.expression();
-            self.consume(
-                |t| matches!(t, Token::Semicolon { .. }),
-                &CompilationError::Raw {
-                    text: format!(
-                        "[{}]: missing ; after return",
-                        self.current_line,
-                    ),
-                }
-            );
+            consume!(self, Token::Semicolon, "missing ; after return keyword");
             self.emit_instr(OpCode::Return);
         }
     }
@@ -674,11 +642,7 @@ impl<'a> Compiler<'a> {
                 }
             }
         }
-        self.consume(
-            |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::Raw {
-                text: format!("[{}]: expected ) after argument list", self.current_line),
-        });
+        consume!(self, Token::RParen, "expected ) after args list");
         self.emit_instr(OpCode::Call(argcount));
     }
 
@@ -704,15 +668,7 @@ impl<'a> Compiler<'a> {
 
     fn print_statement(&mut self) {
         self.expression();
-        self.consume(
-            |t| matches!(t, Token::Semicolon { .. }),
-            &CompilationError::Raw {
-                text: format!(
-                    "[{}]: print statement semicolon is missing at line",
-                    self.current_line,
-                )
-            }
-        );
+        consume!(self, Token::Semicolon, "missing ; after print statement");
         self.emit_instr(OpCode::Print);
     }
 
@@ -723,26 +679,13 @@ impl<'a> Compiler<'a> {
                 _ => self.declaration(),
             }
         }
-        self.consume(
-            |t| matches!(t, Token::RBrace { .. }),
-            &CompilationError::UnclosedBlock { line: self.current_line },
-        );
+        consume!(self, Token::RBrace, "unclosed block");
     }
 
     fn if_statement(&mut self) {
-        self.consume(
-            |t| matches!(t, Token::LParen { .. }),
-            &CompilationError::IfStmtMissingParens {
-                line: self.current_line,
-            }
-        );
+        consume!(self, Token::LParen, "missing ( after 'if'");
         self.expression();
-        self.consume(
-            |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::IfStmtMissingParens {
-                line: self.current_line,
-            }
-        );
+        consume!(self, Token::RParen, "missing ) after 'if' condition");
 
         let false_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
         self.emit_instr(OpCode::Pop);
@@ -760,15 +703,9 @@ impl<'a> Compiler<'a> {
 
     fn while_statement(&mut self) {
         let loop_start = self.get_next_instr_idx();
-        self.consume(
-            |t| matches!(t, Token::LParen { .. }),
-            &CompilationError::WhileStmtMissingParens { line: self.current_line }
-        );
+        consume!(self, Token::LParen, "missing ( after 'while'");
         self.expression();
-        self.consume(
-            |t| matches!(t, Token::RParen { .. }),
-            &CompilationError::WhileStmtMissingParens { line: self.current_line }
-        );
+        consume!(self, Token::RParen, "missing ) after 'while'");
         let exit_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
         self.emit_instr(OpCode::Pop);
         self.statement();
@@ -779,10 +716,7 @@ impl<'a> Compiler<'a> {
 
     fn for_statement(&mut self) {
         self.begin_scope();
-        self.consume(
-            |t| matches!(t, Token::LParen { .. }),
-            &CompilationError::ForStmtMissingParens { line: self.current_line }
-        );
+        consume!(self, Token::LParen, "missing ( after 'for'");
         // initializer
         if self.matches(|t| matches!(t, Token::Var { .. })) {
             self.var_declaration();
@@ -795,12 +729,7 @@ impl<'a> Compiler<'a> {
         let mut exit_jmp = None;
         if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
             self.expression();
-            self.consume(
-                |t| matches!(t, Token::Semicolon { .. }),
-                &CompilationError::Raw {
-                    text: format!("[{}]: Missing ; after condition of the for loop.", self.current_line),
-                },
-            );
+            consume!(self, Token::Semicolon, "missing ; after for condition");
             exit_jmp = Some(self.emit_jump(OpCode::JumpIfFalse(0)));
             self.emit_instr(OpCode::Pop);
         }
@@ -811,10 +740,7 @@ impl<'a> Compiler<'a> {
             let update_start = self.get_next_instr_idx();
             self.expression();
             self.emit_instr(OpCode::Pop);
-            self.consume(
-                |t| matches!(t, Token::RParen { .. }),
-                &CompilationError::ForStmtMissingParens { line: self.current_line },
-            );
+            consume!(self, Token::RParen, "missing ) after 'for' update statement");
             self.emit_loop_jump(loop_start);
             loop_start = update_start;
             self.patch_jump(body_jump);
@@ -886,15 +812,7 @@ impl<'a> Compiler<'a> {
 
     fn expr_statement(&mut self) {
         self.expression();
-        self.consume(
-            |t| matches!(t, Token::Semicolon { .. }),
-            &CompilationError::Raw {
-                text: format!(
-                    "[{}]: expected ; after expression",
-                    self.current_line,
-                )
-            }
-        );
+        consume!(self, Token::Semicolon, "expected ; after expression");
         self.emit_instr(OpCode::Pop);
     }
 
