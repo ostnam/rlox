@@ -34,17 +34,17 @@ impl<T> Arena<T> {
     }
 
     /// Update the value pointed to by the Ref in the arena.
-    pub fn update(&mut self, key: &Ref<T>, val: T) {
+    pub fn update(&mut self, key: Ref<T>, val: T) {
         self.heap[key.idx] = val;
     }
 
     /// Get a reference to the value pointed to by the Ref in the arena.
-    pub fn get(&self, key: &Ref<T>) -> &T {
+    pub fn get(&self, key: Ref<T>) -> &T {
         &self.heap[key.idx]
     }
 
     /// Get a mutable reference to the value pointed to by the Ref in the arena.
-    pub fn get_mut(&mut self, key: &Ref<T>) -> &mut T {
+    pub fn get_mut(&mut self, key: Ref<T>) -> &mut T {
         &mut self.heap[key.idx]
     }
 }

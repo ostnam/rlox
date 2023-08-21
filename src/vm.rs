@@ -368,7 +368,7 @@ impl VM {
                         }),
                     };
                     self.pop_var();
-                    match self.instances.get(&inst_ref).fields.get(&prop_name) {
+                    match self.instances.get(inst_ref).fields.get(&prop_name) {
                         Some(val) => {
                             self.push_val(val.clone());
                         }
@@ -523,7 +523,7 @@ impl VM {
                         }),
                     };
                     self.pop_val();
-                    self.instances.get_mut(&inst).fields.insert(prop_name, val.clone());
+                    self.instances.get_mut(inst).fields.insert(prop_name, val.clone());
                     self.push_val(val);
                 }
 
