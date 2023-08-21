@@ -774,4 +774,23 @@ fn test_classes() {
         "#),
         Ok(LoxVal::Num(3.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            class C {
+                init(x) {
+                    this.x = x;
+                }
+                method(y) {
+                    fun f() {
+                        return this.x + y;
+                    }
+                    return f;
+                }
+            }
+            var c = C(1);
+            var f = c.method(2);
+            f();
+        "#),
+        Ok(LoxVal::Num(3.0)),
+    );
 }
