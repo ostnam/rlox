@@ -9,13 +9,23 @@ pub struct Arena<T> {
 
 /// Storing a `T` into an arena returns a `Ref<T>`.
 /// This `Ref<T>` can later be used to retrieve the `T`, set a new value, etc.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Ref<T> {
     /// Position of the item in the heap of the `Arena`.
     idx: usize,
 
     /// Needed for type-checking.
     phantom: PhantomData<T>,
+}
+
+// we need to implement it manually, otherwise Ref<T> won't be Copy if T isn't.
+impl<T> Clone for Ref<T> {
+    fn clone(&self) -> Self {
+        Self { idx: self.idx.clone(), phantom: self.phantom.clone() }
+    }
+}
+
+impl<T> Copy for Ref<T> {
 }
 
 impl<T> Arena<T> {
