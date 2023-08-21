@@ -299,6 +299,11 @@ impl VM {
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
+                OpCode::DefineClass(ref name) => {
+                    let val = self.peek(0)?.clone();
+                    self.globals.insert(name.clone(), val);
+                },
+
                 OpCode::DefineGlobal(ref name) => {
                     let val = self.pop_val()?.clone();
                     self.globals.insert(name.clone(), val);

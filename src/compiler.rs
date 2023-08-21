@@ -569,7 +569,7 @@ impl<'a> Compiler<'a> {
             self.declare_local(&class_name);
             self.init_last_local();
         } else {
-            self.emit_instr(OpCode::DefineGlobal(class_name.clone()));
+            self.emit_instr(OpCode::DefineClass(class_name.clone()));
         }
         consume!(self, Token::LBrace, "missing { after class name");
         while !tok_matches!(self, Token::RBrace) {
