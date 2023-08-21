@@ -10,6 +10,7 @@ pub struct VM {
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
     ref_resolver: Vec<RefStatus>,
+    classes: Arena<Class>,
     instances: Arena<ClassInstance>,
 }
 
@@ -49,6 +50,7 @@ impl From<Function> for VM {
                 CallFrame { function: main, ip: 0, offset: 0 }
             ],
             ref_resolver: Vec::new(),
+            classes: Arena::new(),
             instances: Arena::new(),
         }
     }
@@ -269,7 +271,8 @@ impl VM {
                         },
                         Callable::Class(cls) => {
                             self.pop_val();
-                            let inst_ref = self.instances.insert(cls.new_instance());
+                            let class = self.classes.get(cls);
+                            let inst_ref = self.instances.insert(class.new_instance());
                             self.push_val(
                                 LoxVal::Instance(inst_ref)
                             );
@@ -290,10 +293,14 @@ impl VM {
                     continue;
                 },
 
-                OpCode::Class(name) => self.push_val(LoxVal::Class(Class {
-                    name,
-                    methods: HashMap::new(),
-                })),
+                OpCode::Class(name) => {
+                    let class = Class {
+                        name,
+                        methods: HashMap::new(),
+                    };
+                    let class_ref = self.classes.insert(class);
+                    self.push_val(LoxVal::Class(class_ref));
+                }
 
                 OpCode::Closure(mut f) => {
                     self.resolve_closure(&mut f);

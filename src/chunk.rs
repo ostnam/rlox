@@ -11,7 +11,7 @@ pub enum LoxVal {
     Str(String),
     Function(Function),
     NativeFunction(NativeFunction),
-    Class(Class),
+    Class(Ref<Class>),
     Instance(Ref<ClassInstance>),
 }
 
@@ -41,7 +41,7 @@ type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
 pub enum Callable {
     Function(Function),
     NativeFunction(NativeFunction),
-    Class(Class),
+    Class(Ref<Class>),
 }
 
 impl LoxVal {
@@ -97,7 +97,7 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Str(s)  => write!(f, "{s}"),
             LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
             LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
-            LoxVal::Class(cls)  => write!(f, "<class: {}>", cls.name),
+            LoxVal::Class(_)  => write!(f, "<class>"),
             LoxVal::Instance(_)  => write!(f, "<class instance>"),
         }
     }

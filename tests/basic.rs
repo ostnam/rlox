@@ -656,16 +656,13 @@ fn test_closures() {
 
 #[test]
 fn test_classes() {
-    assert_eq!(
+    assert!(matches!(
         common::run_program(r#"
             class C {}
             C;
         "#),
-        Ok(LoxVal::Class(Class {
-            name: "C".to_string(),
-            methods: HashMap::new(),
-        })),
-    );
+        Ok(LoxVal::Class(_)),
+    ));
     assert!(matches!(
         common::run_program(r#"
             class C {}
