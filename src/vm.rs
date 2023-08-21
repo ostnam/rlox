@@ -227,28 +227,27 @@ impl VM {
     pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
         while let Some(instr) = self.get_current_instr()? {
             match instr.op {
-                OpCode::Add => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l+r)),
-                    (Some(Str(r)), Some(Str(l))) => self.push_val(Str(l + &r)),
-                    (Some(Num(_)), Some(other))  => return Err(VMError::TypeError {
+                OpCode::Add => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(Num(l+r)),
+                    (Str(r), Str(l)) => self.push_val(Str(l + &r)),
+                    (Num(_), other)  => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "The + operator can either be used to add number or concatenate strings".to_string(),
                     }),
-                    (Some(Str(_)), Some(other))  => return Err(VMError::TypeError {
+                    (Str(_), other)  => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "string".to_string(),
                         got: other.type_name(),
                         details: "The + operator can either be used to add number or concatenate strings".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number or string".to_string(),
                         got: other.type_name(),
                         details: "The + operator can either be used to add number or concatenate strings".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 }
 
                 OpCode::Call(n_args) => {
@@ -270,7 +269,7 @@ impl VM {
                             });
                         },
                         Callable::Class(cls) => {
-                            self.pop_val();
+                            self.pop_val()?;
                             let class = self.classes.get(cls);
                             let inst_ref = self.instances.insert(class.new_instance());
                             self.push_val(
@@ -309,34 +308,32 @@ impl VM {
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
-                OpCode::DefineGlobal(ref name) => match self.pop_val() {
-                    Some(val) => {
-                        self.globals.insert(name.clone(), val);
-                    },
-                    None => return Err(VMError::stack_exhausted(&instr)),
+                OpCode::DefineGlobal(ref name) => {
+                    let val = self.pop_val()?.clone();
+                    self.globals.insert(name.clone(), val);
                 },
 
-                OpCode::Divide => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l/r)),
-                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                OpCode::Divide => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(Num(l/r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the left side of the / operator".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the right side of the / operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
-                OpCode::Equal => match (self.pop_val(), self.pop_val()) {
-                    (Some(rhs), Some(lhs)) => self.push_val(LoxVal::Bool(lhs == rhs)),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
-                }
+                OpCode::Equal => {
+                    let lhs = self.pop_val()?;
+                    let rhs = self.pop_val()?;
+                    self.push_val(LoxVal::Bool(lhs == rhs));
+                },
 
                 OpCode::GetGlobal(var) => {
                     match self.globals.get(var.as_str()) {
@@ -383,21 +380,20 @@ impl VM {
                     self.push_val(self.read_upval(upval_idx))
                 }
 
-                OpCode::Greater => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l>r)),
-                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                OpCode::Greater => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l>r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the left side of the > operator".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the right side of the > operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
                 OpCode::Jump(tgt) => {
@@ -419,45 +415,45 @@ impl VM {
                     }
                 },
 
-                OpCode::Less => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(LoxVal::Bool(l<r)),
-                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                OpCode::Less => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l<r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the left side of the < operator".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the right side of the < operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
-                OpCode::Multiply => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l*r)),
-                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                OpCode::Method(name) => {
+                    let meth = self.peek(0);
+                },
+
+                OpCode::Multiply => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(Num(l*r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the left side of the * operator".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the right side of the * operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
-
-                OpCode::Negate => match self.pop_val() {
-                    None => return Err(VMError::stack_exhausted(&instr)),
-                    Some(Num(n)) => self.push_val(Num(-n)),
-                    Some(other) => return Err(VMError::TypeError{
+                OpCode::Negate => match self.pop_val()? {
+                    Num(n) => self.push_val(Num(-n)),
+                    other => return Err(VMError::TypeError{
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
@@ -465,17 +461,14 @@ impl VM {
                     }),
                 }
 
-                OpCode::Not => match self.pop_val() {
-                    Some(val) => self.push_val(val.cast_to_not_bool()),
-                    _ => return Err(VMError::stack_exhausted(&instr)),
+                OpCode::Not => {
+                    let val = self.pop_val()?.cast_to_not_bool();
+                    self.push_val(val);
                 }
 
                 OpCode::Pop => self.pop_var(),
 
-                OpCode::Print => match self.pop_val() {
-                    Some(val) => println!("{val}"),
-                    _ => return Err(VMError::stack_exhausted(&instr)),
-                }
+                OpCode::Print => println!("{}", self.pop_val()?),
 
                 OpCode::SetGlobal(ref var) => {
                     match self.globals.insert(var.clone(), self.peek(0)?.clone()) {
@@ -502,35 +495,28 @@ impl VM {
                             details: "can only set properties on class instances".to_string(),
                         }),
                     };
-                    let val = match self.pop_val() {
-                        Some(v) => v,
-                        None => return Err(VMError::StackExhausted {
-                                line: 0,
-                                details: String::new(),
-                        }),
-                    };
-                    self.pop_val();
+                    let val = self.pop_val()?;
+                    self.pop_val()?;
                     self.instances.get_mut(inst).fields.insert(prop_name, val.clone());
                     self.push_val(val);
                 }
 
                 OpCode::SetUpval(upval_idx) => self.set_upval(upval_idx, self.peek(0)?.clone()),
 
-                OpCode::Substract => match (self.pop_val(), self.pop_val()) {
-                    (Some(Num(r)), Some(Num(l))) => self.push_val(Num(l-r)),
-                    (Some(Num(_)), Some(other)) => return Err(VMError::TypeError {
+                OpCode::Substract => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(Num(l-r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the left side of the - operator".to_string(),
                     }),
-                    (Some(other), Some(_)) => return Err(VMError::TypeError {
+                    (other, _) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
                         got: other.type_name(),
                         details: "on the right side of the - operator".to_string(),
                     }),
-                    (None, None) | (None, Some(_)) | (Some(_), None) => return Err(VMError::stack_exhausted(&instr)),
                 },
 
 
@@ -543,7 +529,7 @@ impl VM {
                     for _ in old_frame.offset..self.stack.len() {
                         self.pop_var();
                     }
-                    self.pop_val();
+                    self.pop_val()?;
                     self.push_val(result);
                     continue;
                 }
@@ -560,8 +546,14 @@ impl VM {
         self.stack.push(val.into());
     }
 
-    fn pop_val(&mut self) -> Option<LoxVal> {
-        self.stack.pop().map(|x| x.val)
+    fn pop_val(&mut self) -> Result<LoxVal, VMError> {
+        match self.stack.pop() {
+            Some(v) => Ok(v.val),
+            _ => Err(VMError::StackExhausted {
+                line: 0,
+                details: "tried to pop_val() but stack is empty".to_string(),
+            }),
+        }
     }
 
     fn pop_var(&mut self) {
