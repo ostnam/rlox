@@ -113,23 +113,8 @@ enum CompilationError {
     },
     ScanError(scanner::ScanError),
     TokensLeft,
-    UnclosedBlock {
-        line: u64
-    },
-    UnclosedParens {
-        line: u64
-    },
     VariableUsedWhileInit {
         var_name: String,
-        line: u64,
-    },
-    IfStmtMissingParens {
-        line: u64,
-    },
-    WhileStmtMissingParens {
-        line: u64,
-    },
-    ForStmtMissingParens {
         line: u64,
     },
 }
@@ -217,10 +202,6 @@ impl<'a> Compiler<'a> {
         match err {
             CompilationError::TokensLeft => 
                 println!("BUG: tokens left over"),
-            CompilationError::UnclosedBlock { line } =>
-                println!("[{line}]: unclosed block"),
-            CompilationError::UnclosedParens { line } =>
-                println!("[{line}]: unclosed parens"),
             CompilationError::Raw { text } => println!("{text}"),
             CompilationError::ScanError(e) => match e {
                 ScanError::Bug { details, line } =>
@@ -232,16 +213,7 @@ impl<'a> Compiler<'a> {
             }
             CompilationError::VariableUsedWhileInit { var_name, line } => {
                 println!("[{line}]: Variable {var_name} used during its initialization.");
-        }
-            CompilationError::IfStmtMissingParens { line } => {
-                println!("[{line}]: Missing parens around the condition of an if statement.");
-            },
-            CompilationError::WhileStmtMissingParens { line } => {
-                println!("[{line}]: Missing parens around the condition of a while statement.");
-            },
-            CompilationError::ForStmtMissingParens { line } => {
-                println!("[{line}]: Missing parens around the condition of a for statement.");
-            },
+            }
         }
     }
 
