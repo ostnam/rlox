@@ -127,8 +127,17 @@ macro_rules! consume {
             &CompilationError::Raw {
                 text: format!("[{}]: {}", $self.current_line, $msg),
             }
-        );
-    };
+        )
+    }
+}
+
+/// More concise way to call `Compiler::matches`.
+macro_rules! tok_matches {
+    ($self:ident, $tok_type:path) => {
+        $self.matches(
+            |t| matches!(t, $tok_type { .. }),
+        )
+    }
 }
 
 impl<'a> Compiler<'a> {
@@ -239,8 +248,8 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    /// Generally, you should use this method through the `consume!()` macro
-    /// as it requires less boilerplate.
+    /// Generally, you should use this method through the `consume!()`
+    /// macro, as it requires less boilerplate.
     fn consume<F: Fn(&Token) -> bool>(
         &mut self,
         f: F,
@@ -255,6 +264,8 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    /// Generally, you should use this method through the `tok_matches!()`
+    /// macro, as it requires less boilerplate.
     fn matches<F: Fn(&Token) -> bool>(
         &mut self,
         f: F,
@@ -377,7 +388,7 @@ impl<'a> Compiler<'a> {
                 text: String::from("Expected expression.")
             }),
         };
-        if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+        if can_assign && tok_matches!(self, Token::Eql) {
             self.emit_error(&CompilationError::Raw {
                 text: String::from("Invalid assignment target"),
             });
@@ -426,11 +437,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn declaration(&mut self) {
-        if self.matches(|t| matches!(t, Token::Var { .. })) {
+        if tok_matches!(self, Token::Var) {
             self.var_declaration();
-        } else if self.matches(|t| matches!(t, Token::Fun { .. })) {
+        } else if tok_matches!(self, Token::Fun) {
             self.function_declaration();
-        } else if self.matches(|t| matches!(t, Token::Class { .. })) {
+        } else if tok_matches!(self, Token::Class) {
             self.class_declaration();
         } else {
             self.statement();
@@ -471,7 +482,7 @@ impl<'a> Compiler<'a> {
         if self.current_scope_depth > 0 {
             self.declare_local(&var_name);
         }
-        if self.matches(|t| matches!(t, Token::Eql { .. })) {
+        if tok_matches!(self, Token::Eql) {
             self.expression();
         } else {
             self.emit_instr(OpCode::Constant(LoxVal::Nil));
@@ -518,7 +529,7 @@ impl<'a> Compiler<'a> {
         consume!(self, Token::LParen, "missing ( after function name");
         if !matches!(self.current, Some(Token::RParen { .. })) {
             let mut first = true;
-            while first || self.matches(|t| matches!(t, Token::Comma { .. })) {
+            while first || tok_matches!(self, Token::Comma) {
                 first = false;
                 if let Some(f) = self.functions.get_mut(self.current_function) {
                     f.arity += 1;
@@ -553,17 +564,15 @@ impl<'a> Compiler<'a> {
             Some(s) => s,
             None => return,
         };
-        if self.current_scope_depth > 0 {
-            self.declare_local(&class_name);
-        }
         self.emit_instr(OpCode::Class(class_name.clone()));
         if self.current_scope_depth > 0 {
+            self.declare_local(&class_name);
             self.init_last_local();
         } else {
             self.emit_instr(OpCode::DefineGlobal(class_name.clone()));
         }
         consume!(self, Token::LBrace, "missing { after class name");
-        while !self.matches(|t| matches!(t, Token::RBrace { .. })) {
+        while !tok_matches!(self, Token::RBrace) {
             if let None = self.current {
                 self.emit_error(&CompilationError::Raw {
                     text: format!("[{}]: missing }} after class declaration", self.current_line),
@@ -582,7 +591,7 @@ impl<'a> Compiler<'a> {
             return;
         }
 
-        if self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+        if tok_matches!(self, Token::Semicolon) {
             self.emit_implicit_return();
         } else {
             self.expression();
@@ -600,7 +609,7 @@ impl<'a> Compiler<'a> {
         let mut argcount: u8 = 0;
         if !matches!(self.current, Some(Token::RParen { .. })) {
             let mut fst_iter = true;
-            while fst_iter || self.matches(|t| matches!(t, Token::Comma { .. })) {
+            while fst_iter || tok_matches!(self, Token::Comma) {
                 fst_iter = false;
                 self.expression();
                 argcount = match argcount.checked_add(1) {
@@ -619,19 +628,19 @@ impl<'a> Compiler<'a> {
     }
 
     fn statement(&mut self) {
-        if self.matches(|t| matches!(t, Token::Print { .. })) {
+        if tok_matches!(self, Token::Print) {
             self.print_statement();
-        } else if self.matches(|t| matches!(t, Token::LBrace { .. })) {
+        } else if tok_matches!(self, Token::LBrace) {
             self.begin_scope();
             self.block();
             self.end_scope();
-        } else if self.matches(|t| matches!(t, Token::If { .. })) {
+        } else if tok_matches!(self, Token::If) {
             self.if_statement();
-        } else if self.matches(|t| matches!(t, Token::While { .. })) {
+        } else if tok_matches!(self, Token::While) {
             self.while_statement();
-        } else if self.matches(|t| matches!(t, Token::For { .. })) {
+        } else if tok_matches!(self, Token::For) {
             self.for_statement();
-        } else if self.matches(|t| matches!(t, Token::Return { .. })) {
+        } else if tok_matches!(self, Token::Return) {
             self.return_statement();
         } else {
             self.expr_statement();
@@ -667,7 +676,7 @@ impl<'a> Compiler<'a> {
         // condition evaluating to false jumps here
         self.patch_jump(false_jmp);
         self.emit_instr(OpCode::Pop);
-        if self.matches(|t| matches!(t, Token::Else { .. })) {
+        if tok_matches!(self, Token::Else) {
             self.statement();
         }
         self.patch_jump(body_jmp);
@@ -690,16 +699,16 @@ impl<'a> Compiler<'a> {
         self.begin_scope();
         consume!(self, Token::LParen, "missing ( after 'for'");
         // initializer
-        if self.matches(|t| matches!(t, Token::Var { .. })) {
+        if tok_matches!(self, Token::Var) {
             self.var_declaration();
-        } else if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+        } else if !tok_matches!(self, Token::Semicolon) {
             self.expr_statement();
         }
 
         // condition
         let mut loop_start = self.get_next_instr_idx();
         let mut exit_jmp = None;
-        if !self.matches(|t| matches!(t, Token::Semicolon { .. })) {
+        if !tok_matches!(self, Token::Semicolon) {
             self.expression();
             consume!(self, Token::Semicolon, "missing ; after for condition");
             exit_jmp = Some(self.emit_jump(OpCode::JumpIfFalse(0)));
@@ -707,7 +716,7 @@ impl<'a> Compiler<'a> {
         }
 
         // update
-        if !self.matches(|t| matches!(t, Token::RParen { .. })) {
+        if !tok_matches!(self, Token::RParen) {
             let body_jump = self.emit_jump(OpCode::Jump(0));
             let update_start = self.get_next_instr_idx();
             self.expression();
@@ -774,7 +783,7 @@ impl<'a> Compiler<'a> {
             Some(n) => n,
             None => return,
         };
-        if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+        if can_assign && tok_matches!(self, Token::Eql) {
             self.expression();
             self.emit_instr(OpCode::SetProperty(field_name));
         } else {
@@ -847,7 +856,7 @@ impl<'a> Compiler<'a> {
         if let Token::Identifier { name, .. } = self.previous.clone() {
             match self.resolve_local(&name) {
                 Some(pos) => {
-                    if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+                    if can_assign && tok_matches!(self, Token::Eql) {
                         self.expression();
                         self.emit_instr(OpCode::SetLocal(pos));
                     } else {
@@ -855,7 +864,7 @@ impl<'a> Compiler<'a> {
                     }
                 },
                 None => {
-                    if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
+                    if can_assign && tok_matches!(self, Token::Eql) {
                         self.expression();
                         self.emit_instr(OpCode::SetGlobal(name.clone()));
                     } else {
