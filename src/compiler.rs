@@ -188,10 +188,7 @@ impl<'a> Compiler<'a> {
     fn end_compilation(&mut self) -> Result<(), CompilationError> {
         match self.scanner.next() {
             None => {
-                self.emit_instr(Instruction  {
-                    op: OpCode::Return,
-                    line: self.current_line,
-                });
+                self.emit_instr(OpCode::Return);
                 Ok(())
             }
             Some(_) => Err(CompilationError::TokensLeft),
@@ -303,10 +300,7 @@ impl<'a> Compiler<'a> {
                         break;
                     }
                     num_valid_locals -= 1;
-                    self.emit_instr(Instruction {
-                        op: OpCode::Pop,
-                        line: self.current_line,
-                    });
+                    self.emit_instr(OpCode::Pop);
                 }
             }
         }
@@ -383,9 +377,9 @@ impl<'a> Compiler<'a> {
             .chunk.0.len()
     }
 
-    fn emit_instr(&mut self, instr: Instruction) {
+    fn emit_instr(&mut self, instr: OpCode) {
         if let Some(f) = self.functions.get_mut(self.current_function) {
-            f.chunk.0.push(instr);
+            f.chunk.0.push(Instruction { op: instr, line: self.current_line });
         }
     }
 
@@ -419,20 +413,14 @@ impl<'a> Compiler<'a> {
     }
 
     fn number(&mut self, _can_assign: bool) {
-        if let Token::NumLit { value, line } = self.previous {
-            self.emit_instr(Instruction {
-                op: OpCode::Constant(LoxVal::Num(value)),
-                line,
-            })
+        if let Token::NumLit { value, .. } = self.previous {
+            self.emit_instr(OpCode::Constant(LoxVal::Num(value)));
         }
     }
 
     fn string(&mut self, _can_assign: bool) {
-        if let Token::StrLit { content, line } = &self.previous {
-            self.emit_instr(Instruction {
-                op: OpCode::Constant(LoxVal::Str(content.clone())),
-                line: *line,
-            });
+        if let Token::StrLit { content, .. } = &self.previous {
+            self.emit_instr(OpCode::Constant(LoxVal::Str(content.clone())));
         }
     }
 
@@ -449,14 +437,8 @@ impl<'a> Compiler<'a> {
         let op = self.previous.clone();
         self.parse_precedence(PrecedenceLvl::Unary);
         match op {
-            Token::Minus { line } => self.emit_instr(Instruction {
-                op: OpCode::Negate,
-                line,
-            }),
-            Token::Bang { line } => self.emit_instr(Instruction {
-                op: OpCode::Not,
-                line,
-            }),
+            Token::Minus { .. } => self.emit_instr(OpCode::Negate),
+            Token::Bang { .. } => self.emit_instr(OpCode::Not),
             _ => (),
         }
     }
@@ -510,10 +492,7 @@ impl<'a> Compiler<'a> {
         if self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
         } else {
-            self.emit_instr(Instruction {
-                op: OpCode::Constant(LoxVal::Nil),
-                line: self.current_line
-            })
+            self.emit_instr(OpCode::Constant(LoxVal::Nil));
         }
         self.consume(
             |t| matches!(t, Token::Semicolon { .. }),
@@ -522,10 +501,7 @@ impl<'a> Compiler<'a> {
             },
         );
         if self.current_scope_depth == 0 {
-            self.emit_instr(Instruction {
-                op: OpCode::DefineGlobal(var_name),
-                line: self.current_line,
-            })
+            self.emit_instr(OpCode::DefineGlobal(var_name));
         } else {
             self.init_last_local();
         }
@@ -609,19 +585,12 @@ impl<'a> Compiler<'a> {
         self.end_fn_scope();
         self.current_function = old_fn_idx;
         if self.current_scope_depth > 0 {
-            self.emit_instr(Instruction {
-                op: OpCode::Closure(self.functions[new_fn_idx].clone()),
-                line: self.current_line,
-            });
+            self.emit_instr(OpCode::Closure(self.functions[new_fn_idx].clone()));
         } else {
-            self.emit_instr(Instruction {
-                op: OpCode::Constant(LoxVal::Function(self.functions[new_fn_idx].clone())),
-                line: self.current_line,
-            });
-            self.emit_instr(Instruction {
-                op: OpCode::DefineGlobal(name),
-                line: self.current_line,
-            });
+            self.emit_instr(OpCode::Constant(
+                LoxVal::Function(self.functions[new_fn_idx].clone())
+            ));
+            self.emit_instr(OpCode::DefineGlobal(name));
         }
         self.current_function_type = old_fn_type;
     }
@@ -633,20 +602,13 @@ impl<'a> Compiler<'a> {
         };
         if self.current_scope_depth > 0 {
             self.declare_local(&class_name);
-        } else {
-        };
-        self.emit_instr(Instruction {
-            op: OpCode::Class(class_name.clone()),
-            line: self.current_line,
-        });
+        }
+        self.emit_instr(OpCode::Class(class_name.clone()));
         if self.current_scope_depth > 0 {
             self.init_last_local();
         } else {
-            self.emit_instr(Instruction {
-                op: OpCode::DefineGlobal(class_name.clone()),
-                line: self.current_line,
-            });
-        };
+            self.emit_instr(OpCode::DefineGlobal(class_name.clone()));
+        }
         self.consume(
             |t| matches!(t, Token::LBrace { .. }),
             &CompilationError::Raw{
@@ -659,6 +621,7 @@ impl<'a> Compiler<'a> {
                     text: format!("[{}]: missing }} after class declaration", self.current_line),
                 });
             }
+            self.method();
         }
     }
 
@@ -684,22 +647,13 @@ impl<'a> Compiler<'a> {
                     ),
                 }
             );
-            self.emit_instr(Instruction {
-                op: OpCode::Return,
-                line: self.current_line
-            });
+            self.emit_instr(OpCode::Return);
         }
     }
 
     fn emit_implicit_return(&mut self) {
-        self.emit_instr(Instruction {
-            op: OpCode::Constant(LoxVal::Nil),
-            line: self.current_line,
-        });
-        self.emit_instr(Instruction {
-            op: OpCode::Return,
-            line: self.current_line,
-        });
+        self.emit_instr(OpCode::Constant(LoxVal::Nil));
+        self.emit_instr(OpCode::Return);
     }
 
     fn call(&mut self, _can_assign: bool) {
@@ -725,10 +679,7 @@ impl<'a> Compiler<'a> {
             &CompilationError::Raw {
                 text: format!("[{}]: expected ) after argument list", self.current_line),
         });
-        self.emit_instr(Instruction {
-            op: OpCode::Call(argcount),
-            line: self.current_line,
-        });
+        self.emit_instr(OpCode::Call(argcount));
     }
 
     fn statement(&mut self) {
@@ -762,12 +713,7 @@ impl<'a> Compiler<'a> {
                 )
             }
         );
-        self.emit_instr(
-            Instruction {
-                op: OpCode::Print,
-                line: self.current_line,
-            }
-        )
+        self.emit_instr(OpCode::Print);
     }
 
     fn block(&mut self) {
@@ -799,19 +745,13 @@ impl<'a> Compiler<'a> {
         );
 
         let false_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
-        self.emit_instr(Instruction {
-            op: OpCode::Pop,
-            line: self.current_line,
-        });
+        self.emit_instr(OpCode::Pop);
         self.statement();
         let body_jmp = self.emit_jump(OpCode::Jump(0));
 
         // condition evaluating to false jumps here
         self.patch_jump(false_jmp);
-        self.emit_instr(Instruction {
-            op: OpCode::Pop,
-            line: self.current_line,
-        });
+        self.emit_instr(OpCode::Pop);
         if self.matches(|t| matches!(t, Token::Else { .. })) {
             self.statement();
         }
@@ -830,11 +770,11 @@ impl<'a> Compiler<'a> {
             &CompilationError::WhileStmtMissingParens { line: self.current_line }
         );
         let exit_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
-        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.emit_instr(OpCode::Pop);
         self.statement();
         self.emit_loop_jump(loop_start);
         self.patch_jump(exit_jmp);
-        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.emit_instr(OpCode::Pop);
     }
 
     fn for_statement(&mut self) {
@@ -862,10 +802,7 @@ impl<'a> Compiler<'a> {
                 },
             );
             exit_jmp = Some(self.emit_jump(OpCode::JumpIfFalse(0)));
-            self.emit_instr(Instruction {
-                op: OpCode::Pop,
-                line: self.current_line,
-            });
+            self.emit_instr(OpCode::Pop);
         }
 
         // update
@@ -873,10 +810,7 @@ impl<'a> Compiler<'a> {
             let body_jump = self.emit_jump(OpCode::Jump(0));
             let update_start = self.get_next_instr_idx();
             self.expression();
-            self.emit_instr(Instruction {
-                op: OpCode::Pop,
-                line: self.current_line
-            });
+            self.emit_instr(OpCode::Pop);
             self.consume(
                 |t| matches!(t, Token::RParen { .. }),
                 &CompilationError::ForStmtMissingParens { line: self.current_line },
@@ -890,21 +824,18 @@ impl<'a> Compiler<'a> {
         self.emit_loop_jump(loop_start);
         if let Some(idx) = exit_jmp {
             self.patch_jump(idx);
-            self.emit_instr(Instruction {
-                op: OpCode::Pop,
-                line: self.current_line,
-            });
+            self.emit_instr(OpCode::Pop);
         }
         self.end_scope();
     }
 
     fn emit_jump(&mut self, jmp: OpCode) -> usize {
-        self.emit_instr(Instruction { op: jmp, line: self.current_line });
+        self.emit_instr(jmp);
         self.get_next_instr_idx() - 1
     }
 
     fn emit_loop_jump(&mut self, tgt: usize) {
-        self.emit_instr(Instruction { op: OpCode::Jump(tgt), line: self.current_line });
+        self.emit_instr(OpCode::Jump(tgt));
     }
 
     fn patch_jump(&mut self, jmp_idx: usize) {
@@ -947,15 +878,9 @@ impl<'a> Compiler<'a> {
         };
         if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
             self.expression();
-            self.emit_instr(Instruction {
-                op: OpCode::SetProperty(field_name),
-                line: self.current_line
-            });
+            self.emit_instr(OpCode::SetProperty(field_name));
         } else {
-            self.emit_instr(Instruction {
-                op: OpCode::GetProperty(field_name),
-                line: self.current_line
-            });
+            self.emit_instr(OpCode::GetProperty(field_name));
         }
     }
 
@@ -970,12 +895,7 @@ impl<'a> Compiler<'a> {
                 )
             }
         );
-        self.emit_instr(
-            Instruction {
-                op: OpCode::Pop,
-                line: self.current_line,
-            }
-        )
+        self.emit_instr(OpCode::Pop);
     }
 
     fn expression(&mut self) {
@@ -987,70 +907,24 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(PrecedenceLvl::from(&self.previous).next());
 
         match op {
-            Token::Plus { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Add,
-                    line,
-                }),
-            Token::Minus { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Substract,
-                    line,
-                }),
-            Token::Star { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Multiply,
-                    line,
-                }),
-            Token::Slash { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Divide,
-                    line,
-                }),
-            Token::BangEql { line } => {
-                self.emit_instr(Instruction {
-                    op: OpCode::Equal,
-                    line,
-                });
-                self.emit_instr(Instruction {
-                    op: OpCode::Not,
-                    line,
-                });
+            Token::Plus { .. } => self.emit_instr(OpCode::Add),
+            Token::Minus { .. } => self.emit_instr(OpCode::Substract),
+            Token::Star { .. } => self.emit_instr(OpCode::Multiply),
+            Token::Slash { .. } => self.emit_instr(OpCode::Divide),
+            Token::BangEql { .. } => {
+                self.emit_instr(OpCode::Equal);
+                self.emit_instr(OpCode::Not);
             },
-            Token::EqlEql { line } =>
-                self.emit_instr(Instruction {
-                    op: OpCode::Equal,
-                    line,
-                }),
-            Token::Greater { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Greater,
-                    line,
-                }),
-            Token::GreaterEql { line } => {
-                self.emit_instr(Instruction {
-                    op: OpCode::Less,
-                    line,
-                });
-                self.emit_instr(Instruction {
-                    op: OpCode::Not,
-                    line,
-                });
+            Token::EqlEql { .. } => self.emit_instr(OpCode::Equal),
+            Token::Greater { .. } => self.emit_instr(OpCode::Greater),
+            Token::GreaterEql { .. } => {
+                self.emit_instr(OpCode::Less);
+                self.emit_instr(OpCode::Not);
             }
-            Token::Less { line } => 
-                self.emit_instr(Instruction {
-                    op: OpCode::Less,
-                    line,
-                }),
-            Token::LessEql { line } => {
-                self.emit_instr(Instruction {
-                    op: OpCode::Greater,
-                    line,
-                });
-                self.emit_instr(Instruction {
-                    op: OpCode::Not,
-                    line,
-                });
+            Token::Less { .. } => self.emit_instr(OpCode::Less),
+            Token::LessEql { .. } => {
+                self.emit_instr(OpCode::Greater);
+                self.emit_instr(OpCode::Not);
             },
             _ => (),
         }
@@ -1058,68 +932,44 @@ impl<'a> Compiler<'a> {
 
     fn and(&mut self, _can_assign: bool) {
         let false_jmp = self.emit_jump(OpCode::JumpIfFalse(0));
-        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.emit_instr(OpCode::Pop);
         self.parse_precedence(PrecedenceLvl::And);
         self.patch_jump(false_jmp);
     }
 
     fn or(&mut self, _can_assign: bool) {
         let true_jmp = self.emit_jump(OpCode::JumpIfTrue(0));
-        self.emit_instr(Instruction { op: OpCode::Pop, line: self.current_line });
+        self.emit_instr(OpCode::Pop);
         self.parse_precedence(PrecedenceLvl::Or);
         self.patch_jump(true_jmp);
     }
 
     fn literal(&mut self, _can_assign: bool) {
         match self.previous {
-            Token::True { line } =>
-                self.emit_instr(Instruction {
-                    op: OpCode::Constant(LoxVal::Bool(true)),
-                    line,
-                }),
-            Token::False { line } =>
-                self.emit_instr(Instruction {
-                    op: OpCode::Constant(LoxVal::Bool(false)),
-                    line,
-                }),
-            Token::Nil { line } =>
-                self.emit_instr(Instruction {
-                    op: OpCode::Constant(LoxVal::Nil),
-                    line,
-                }),
+            Token::True { .. } => self.emit_instr(OpCode::Constant(LoxVal::Bool(true))),
+            Token::False { .. } => self.emit_instr(OpCode::Constant(LoxVal::Bool(false))),
+            Token::Nil { .. } => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
             _ => (),
         }
     }
 
     fn variable(&mut self, can_assign: bool) {
-        if let Token::Identifier { name, line } = self.previous.clone() {
+        if let Token::Identifier { name, .. } = self.previous.clone() {
             match self.resolve_local(&name) {
                 Some(pos) => {
                     if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
                         self.expression();
-                        self.emit_instr(Instruction {
-                            op: OpCode::SetLocal(pos),
-                            line,
-                        })
+                        self.emit_instr(OpCode::SetLocal(pos));
                     } else {
-                        self.emit_instr(Instruction {
-                            op: OpCode::GetLocal(pos),
-                            line
-                        })
+                        self.emit_instr(OpCode::GetLocal(pos));
                     }
                 },
                 None => {
                     if can_assign && self.matches(|t| matches!(t, Token::Eql { .. })) {
                         self.expression();
-                        self.emit_instr(Instruction {
-                            op: OpCode::SetGlobal(name.clone()),
-                            line,
-                        })
+                        self.emit_instr(OpCode::SetGlobal(name.clone()));
                     } else {
-                        self.emit_instr(Instruction {
-                            op: OpCode::GetGlobal(name),
-                            line
-                        })
+                        self.emit_instr(OpCode::GetGlobal(name));
                     }
                 }
             }
