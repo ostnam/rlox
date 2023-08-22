@@ -2,6 +2,7 @@
 use std::marker::PhantomData;
 
 /// The arena itself.
+#[derive(Debug)]
 pub struct Arena<T> {
     /// Where the value are stored.
     heap: Vec<T>,

@@ -1,9 +1,10 @@
+use crate::arena::Arena;
 use crate::chunk::{Chunk, Instruction, OpCode, LoxVal, Function, FunctionType, LocalVarRef};
-use crate::scanner::{Scanner, ScannerInitError, Token, ScanError, self};
+use crate::scanner::{Scanner, Token, ScanError, self, ScanResult};
 
-#[derive(Debug)]
-pub struct Parser<'a> {
-    scanner: Scanner<'a>,
+pub struct Parser {
+    scanner: Box<dyn Iterator<Item=Token>>,
+    strings: Arena<String>,
     previous: Token,
     current: Option<Token>,
     had_error: bool,
@@ -36,6 +37,57 @@ enum PrecedenceLvl {
     Unary,
     Call,
     Primary,
+}
+
+impl From<Token> for PrecedenceLvl {
+    fn from(op: Token) -> Self {
+        match op {
+            Token::RParen { .. }
+            | Token::LBrace { .. }
+            | Token::RBrace { .. }
+            | Token::Comma { .. }
+            | Token::Semicolon { .. }
+            | Token::Bang { .. }
+            | Token::Eql { .. }
+            | Token::Identifier { .. }
+            | Token::NumLit { .. }
+            | Token::StrLit { .. }
+            | Token::Class { .. }
+            | Token::Else { .. }
+            | Token::False { .. }
+            | Token::For { .. }
+            | Token::Fun { .. }
+            | Token::If { .. }
+            | Token::Nil { .. }
+            | Token::Print { .. }
+            | Token::Return { .. }
+            | Token::Super { .. }
+            | Token::This { .. }
+            | Token::True { .. }
+            | Token::Var { .. }
+            | Token::While { .. } => PrecedenceLvl::Null,
+
+            Token::Or { .. } => PrecedenceLvl::Or,
+            Token::And { .. } => PrecedenceLvl::And,
+
+            Token::BangEql { .. }
+            | Token::EqlEql { .. } => PrecedenceLvl::Equality,
+
+            Token::Greater { .. }
+            | Token::GreaterEql { .. }
+            | Token::Less { .. }
+            | Token::LessEql { .. } => PrecedenceLvl::Comparison,
+
+            Token::Minus { .. }
+            | Token::Plus { .. } => PrecedenceLvl::Term,
+
+            Token::Slash { .. }
+            | Token::Star { .. } => PrecedenceLvl::Factor,
+
+            Token::LParen { .. }
+            | Token::Dot { .. } => PrecedenceLvl::Call,
+        }
+    }
 }
 
 impl From<&Token> for PrecedenceLvl {
@@ -89,6 +141,7 @@ impl From<&Token> for PrecedenceLvl {
     }
 }
 
+
 impl PrecedenceLvl {
     fn next(&self) -> PrecedenceLvl {
         match self {
@@ -140,16 +193,18 @@ macro_rules! tok_matches {
     }
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(src: &'a str) -> Result<Self, ScannerInitError> {
-        let scanner = Scanner::new(src)?;
+impl Parser {
+    pub fn new(src: &str) -> Result<Self, ScanError> {
+        let ScanResult { toks: tokens, strings } = Scanner::new(src).scan()?;
+        let scanner = tokens.into_iter();
         let main = Function {
             arity: 0,
             chunk: Chunk::default(),
             name: "main".to_string(),
         };
         Ok(Parser {
-            scanner,
+            scanner: Box::new(scanner),
+            strings,
             previous: Token::LParen { line: 0 },
             current: None,
             had_error: false,
@@ -228,18 +283,15 @@ impl<'a> Parser<'a> {
 
     fn advance(&mut self) {
         if let Some(t) = &self.current {
-            self.previous = t.clone();
+            self.previous = t.to_owned();
         }
         self.current_line = self.previous.line();
         loop {
             match self.scanner.next() {
-                Some(Ok(tok)) => {
+                Some(tok) => {
                     self.current = Some(tok);
                     break;
                 },
-                Some(Err(e)) if !self.panic_mode =>
-                    self.emit_error(&CompilationError::ScanError(e)),
-                Some(Err(_)) => (),
                 None => {
                     self.current = None;
                     break;
@@ -398,7 +450,7 @@ impl<'a> Parser<'a> {
             Some(t) => t.clone(),
             None => return,
         };
-        while precedence <= PrecedenceLvl::from(&current) {
+        while precedence <= PrecedenceLvl::from(current) {
             self.advance();
             self.infix_rule(&self.previous.clone(), can_assign);
             current = match &self.current {
@@ -416,7 +468,7 @@ impl<'a> Parser<'a> {
 
     fn string(&mut self, _can_assign: bool) {
         if let Token::StrLit { content, .. } = &self.previous {
-            self.emit_instr(OpCode::Constant(LoxVal::Str(content.clone())));
+            // TODO self.emit_instr(OpCode::Constant(LoxVal::Str(content.clone())));
         }
     }
 
@@ -905,6 +957,7 @@ impl<'a> Parser<'a> {
     }
 
     fn variable(&mut self, can_assign: bool) {
+        /* TODO
         if let Token::Identifier { name, .. } = self.previous.clone() {
             match self.resolve_local(&name) {
                 Some(pos) => {
@@ -925,6 +978,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        */
     }
 
     fn this(&mut self) {
@@ -971,6 +1025,7 @@ impl<'a> Parser<'a> {
     /// Otherwise, return `None`, after emitting an error about a missing
     /// identifier in the given `ctx`.
     fn identifier(&mut self, ctx: &str) -> Option<String> {
+        /* TODO
         match &self.current {
             Some(Token::Identifier { name, .. }) => {
                 let name = name.clone();
@@ -987,6 +1042,8 @@ impl<'a> Parser<'a> {
                 None
             },
         }
+        */
+        None
     }
 
     fn prefix_rule(&mut self, token: &Token, can_assign: bool) -> Result<(), ()> {

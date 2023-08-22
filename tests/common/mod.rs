@@ -1,9 +1,9 @@
 use rlox::chunk::LoxVal;
-use rlox::compiler::Compiler;
+use rlox::parser::Parser;
 use rlox::vm::{VMError, VM};
 
 pub fn run_expr(src: &str) -> Result<LoxVal, VMError> {
-    let chunk = Compiler::new(src)
+    let chunk = Parser::new(src)
         .unwrap()
         .compile_expr()
         .unwrap();
@@ -12,7 +12,7 @@ pub fn run_expr(src: &str) -> Result<LoxVal, VMError> {
 }
 
 pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
-    let chunk = Compiler::new(src)
+    let chunk = Parser::new(src)
         .unwrap()
         .compile()
         .unwrap();

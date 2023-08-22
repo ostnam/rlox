@@ -1,6 +1,7 @@
 use std::{str::Chars, iter::Peekable};
 
-/// Identifiers and strings store a &str of the source string, hence the lifetime.
+use crate::arena::{Ref, Arena};
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     // single-char tokens
@@ -27,10 +28,10 @@ pub enum Token {
     LessEql    { line: u64 },
 
     //  literals
-    Identifier { name: String, line: u64 },
+    Identifier { name: Ref<String>, line: u64 },
     NumLit     { value: f64, line: u64 },
     /// The quotes aren't included in `content`
-    StrLit     { content: String, line: u64 },
+    StrLit     { content: Ref<String>, line: u64 },
 
     // keywords
     And        { line: u64 },
@@ -113,26 +114,21 @@ pub enum ScanError {
 pub struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     current_line: u64,
+    strings: Arena<String>,
 }
 
-#[derive(Debug)]
-pub enum ScannerInitError {
-    InputTooLong
+pub struct ScanResult {
+    pub toks: Vec<Token>,
+    pub strings: Arena<String>,
 }
 
 impl<'a> Scanner<'a> {
     /// Creates a new scanner for the `src`.
-    ///
-    /// Can only fail if `src.len() == usize::MAX()`, in which case
-    /// `ScannerInitError::InputTooLong` will be returned (as `advance`
-    /// increments `self.pos` by 1, if `src.len() == usize::MAX`,
-    /// we risk overflowing back to 0, potentially causing the scanner to loop
-    /// forever).
-    pub fn new(src: &'a str) -> Result<Scanner<'a>, ScannerInitError> {
-        if src.len() == usize::MAX {
-            Err(ScannerInitError::InputTooLong)
-        } else {
-            Ok(Scanner { chars: src.chars().peekable(), current_line: 1 })
+    pub fn new(src: &'a str) -> Scanner<'a> {
+        Scanner {
+            chars: src.chars().peekable(),
+            current_line: 1,
+            strings: Arena::new()
         }
     }
 
@@ -205,12 +201,12 @@ impl<'a> Scanner<'a> {
     /// Called to scan a string literal.
     /// The leading " must already have been matched.
     /// Only returns `None` if the end of the source has been reached.
-    fn scan_str_literal(&mut self) -> Option<Result<Token, ScanError>> {
+    fn scan_str_literal(&mut self) -> Result<Token, ScanError> {
         let start_line = self.current_line;
         let mut res = String::new();
         loop {
             match self.advance() {
-                None => return Some(Err(ScanError::UnclosedStringLiteral)),
+                None => return Err(ScanError::UnclosedStringLiteral),
                 Some('\n') => {
                     self.current_line += 1;
                     res.push('\n');
@@ -223,19 +219,20 @@ impl<'a> Scanner<'a> {
                 },
             }
         }
-        Some(Ok(Token::StrLit {
-            content: res,
+        let str_ref = self.strings.insert(res);
+        Ok(Token::StrLit {
+            content: str_ref,
             line: start_line,
-        }))
+        })
     }
 
     /// Called to scan a number literal.
     /// Only returns `None` if the end of the source has been reached.
-    fn scan_num_literal(&mut self) -> Option<Result<Token, ScanError>> {
-        let mut collected = String::new();
+    fn scan_num_literal(&mut self, c: char) -> Result<Token, ScanError> {
+        let mut collected = c.to_string();
+        self.advance();
         loop {
             match self.peek() {
-                None if collected.len() == 0 => return None,
                 None => break,
                 Some(c) if c.is_ascii_digit() => {
                     collected.push(c);
@@ -264,7 +261,7 @@ impl<'a> Scanner<'a> {
             _ => (),
         }
 
-        Some(match collected.parse::<f64>() {
+        match collected.parse::<f64>() {
             Ok(num) => Ok(Token::NumLit {
                 value: num,
                 line: self.current_line,
@@ -277,25 +274,12 @@ impl<'a> Scanner<'a> {
                 ),
                 line: self.current_line,
             }),
-        })
+        }
     }
 
-    fn scan_identifier_or_keyword(&mut self) -> Option<Result<Token, ScanError>> {
-        let mut collected = String::new();
-        match self.peek() {
-            None => return None,
-            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
-                self.advance();
-                collected.push(c);
-            },
-            _ => return Some(Err(ScanError::Bug {
-                details: format!(
-                    "Error scanning identifier at line {}",
-                    self.current_line
-                ),
-                line: self.current_line,
-            })),
-        }
+    fn scan_identifier_or_keyword(&mut self, fst: char) -> Result<Token, ScanError> {
+        let mut collected = fst.to_string();
+        self.advance();
         loop {
             match self.peek() {
                 Some(c) if c.is_ascii_alphanumeric() || c == '_' => {
@@ -306,182 +290,215 @@ impl<'a> Scanner<'a> {
             }
         }
         match collected.as_str() {
-            "and"    => Some(Ok(Token::And    { line: self.current_line })),
-            "class"  => Some(Ok(Token::Class  { line: self.current_line })),
-            "else"   => Some(Ok(Token::Else   { line: self.current_line })),
-            "false"  => Some(Ok(Token::False  { line: self.current_line })),
-            "for"    => Some(Ok(Token::For    { line: self.current_line })),
-            "fun"    => Some(Ok(Token::Fun    { line: self.current_line })),
-            "if"     => Some(Ok(Token::If     { line: self.current_line })),
-            "nil"    => Some(Ok(Token::Nil    { line: self.current_line })),
-            "or"     => Some(Ok(Token::Or     { line: self.current_line })),
-            "print"  => Some(Ok(Token::Print  { line: self.current_line })),
-            "return" => Some(Ok(Token::Return { line: self.current_line })),
-            "super"  => Some(Ok(Token::Super  { line: self.current_line })),
-            "this"   => Some(Ok(Token::This   { line: self.current_line })),
-            "true"   => Some(Ok(Token::True   { line: self.current_line })),
-            "var"    => Some(Ok(Token::Var    { line: self.current_line })),
-            "while"  => Some(Ok(Token::While  { line: self.current_line })),
-            _ => Some(Ok(Token::Identifier {
-                name: collected,
-                line: self.current_line
-            })),
+            "and"    => Ok(Token::And    { line: self.current_line }),
+            "class"  => Ok(Token::Class  { line: self.current_line }),
+            "else"   => Ok(Token::Else   { line: self.current_line }),
+            "false"  => Ok(Token::False  { line: self.current_line }),
+            "for"    => Ok(Token::For    { line: self.current_line }),
+            "fun"    => Ok(Token::Fun    { line: self.current_line }),
+            "if"     => Ok(Token::If     { line: self.current_line }),
+            "nil"    => Ok(Token::Nil    { line: self.current_line }),
+            "or"     => Ok(Token::Or     { line: self.current_line }),
+            "print"  => Ok(Token::Print  { line: self.current_line }),
+            "return" => Ok(Token::Return { line: self.current_line }),
+            "super"  => Ok(Token::Super  { line: self.current_line }),
+            "this"   => Ok(Token::This   { line: self.current_line }),
+            "true"   => Ok(Token::True   { line: self.current_line }),
+            "var"    => Ok(Token::Var    { line: self.current_line }),
+            "while"  => Ok(Token::While  { line: self.current_line }),
+            _ => {
+                let name = self.strings.insert(collected);
+                Ok(Token::Identifier {
+                    name,
+                    line: self.current_line
+                })
+            }
         }
     }
-}
 
-impl<'a> std::iter::Iterator for Scanner<'a> {
-    type Item = Result<Token, ScanError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.skip_whitespace();
-        match self.peek()? {
-            c if c.is_ascii_alphabetic() || c == '_'
-                => return self.scan_identifier_or_keyword(),
-            c if c.is_ascii_digit()
-                => return self.scan_num_literal(),
-            _   => (),
-        };
-        match self.advance()? {
-            '(' => Some(Ok(Token::LParen { line: self.current_line })),
-            ')' => Some(Ok(Token::RParen { line: self.current_line })),
-            '{' => Some(Ok(Token::LBrace { line: self.current_line })),
-            '}' => Some(Ok(Token::RBrace { line: self.current_line })),
-            ';' => Some(Ok(Token::Semicolon { line: self.current_line })),
-            ',' => Some(Ok(Token::Comma { line: self.current_line })),
-            '.' => Some(Ok(Token::Dot { line: self.current_line })),
-            '-' => Some(Ok(Token::Minus { line: self.current_line })),
-            '+' => Some(Ok(Token::Plus { line: self.current_line })),
-            '/' => Some(Ok(Token::Slash { line: self.current_line })),
-            '*' => Some(Ok(Token::Star { line: self.current_line })),
-            '!' if self.matches('=') =>
-                Some(Ok(Token::BangEql { line: self.current_line })),
-            '!' => Some(Ok(Token::Bang { line: self.current_line })),
-            '=' if self.matches('=') =>
-                Some(Ok(Token::EqlEql { line: self.current_line })),
-            '=' => Some(Ok(Token::Eql { line: self.current_line })),
-            '<' if self.matches('=') =>
-                Some(Ok(Token::LessEql { line: self.current_line })),
-            '<' => Some(Ok(Token::Less { line: self.current_line })),
-            '>' if self.matches('=') =>
-                Some(Ok(Token::GreaterEql { line: self.current_line })),
-            '>' => Some(Ok(Token::Greater { line: self.current_line })),
-            '"' => {
-                self.scan_str_literal()
-            }
-            _ => Some(Err(ScanError::UnknownCharacter))
+    pub fn scan(mut self) -> Result<ScanResult, ScanError> {
+        let mut res = Vec::new();
+        loop {
+            self.skip_whitespace();
+            let c = match self.peek() {
+                Some(c) => c,
+                None => break,
+            };
+            if c.is_ascii_alphabetic() || c == '_' {
+                res.push(self.scan_identifier_or_keyword(c)?);
+                continue;
+            };
+            if c.is_ascii_digit() {
+               res.push(self.scan_num_literal(c)?);
+               continue;
+            };
+            self.advance();
+            match c {
+                '(' => res.push(Token::LParen { line: self.current_line }),
+                ')' => res.push(Token::RParen { line: self.current_line }),
+                '{' => res.push(Token::LBrace { line: self.current_line }),
+                '}' => res.push(Token::RBrace { line: self.current_line }),
+                ';' => res.push(Token::Semicolon { line: self.current_line }),
+                ',' => res.push(Token::Comma { line: self.current_line }),
+                '.' => res.push(Token::Dot { line: self.current_line }),
+                '-' => res.push(Token::Minus { line: self.current_line }),
+                '+' => res.push(Token::Plus { line: self.current_line }),
+                '/' => res.push(Token::Slash { line: self.current_line }),
+                '*' => res.push(Token::Star { line: self.current_line }),
+                '!' if self.matches('=') =>
+                    res.push(Token::BangEql { line: self.current_line }),
+                '!' => res.push(Token::Bang { line: self.current_line }),
+                '=' if self.matches('=') =>
+                    res.push(Token::EqlEql { line: self.current_line }),
+                '=' => res.push(Token::Eql { line: self.current_line }),
+                '<' if self.matches('=') =>
+                    res.push(Token::LessEql { line: self.current_line }),
+                '<' => res.push(Token::Less { line: self.current_line }),
+                '>' if self.matches('=') =>
+                    res.push(Token::GreaterEql { line: self.current_line }),
+                '>' => res.push(Token::Greater { line: self.current_line }),
+                '"' => res.push(self.scan_str_literal()?),
+                _ => return Err(ScanError::UnknownCharacter),
+            };
         }
+
+        Ok(ScanResult {
+            toks: res,
+            strings: self.strings,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn scan<'a>(src: &'a str) -> Vec<Token> {
-        Scanner::new(src)
-            .unwrap()
-            .map(|r| r.unwrap())
-            .collect()
+    fn scan<'a>(src: &'a str) -> ScanResult {
+        Scanner::new(src).scan().unwrap()
     }
 
     #[test]
     fn scan_single_token() {
         let toks = scan("(");
-        assert_eq!(toks[..], [Token::LParen { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::LParen { line: 1 }]);
         let toks = scan(")");
-        assert_eq!(toks[..], [Token::RParen { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::RParen { line: 1 }]);
         let toks = scan("{");
-        assert_eq!(toks[..], [Token::LBrace { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::LBrace { line: 1 }]);
         let toks = scan("}");
-        assert_eq!(toks[..], [Token::RBrace { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::RBrace { line: 1 }]);
         let toks = scan(",");
-        assert_eq!(toks[..], [Token::Comma { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Comma { line: 1 }]);
         let toks = scan(".");
-        assert_eq!(toks[..], [Token::Dot { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Dot { line: 1 }]);
         let toks = scan("-");
-        assert_eq!(toks[..], [Token::Minus { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Minus { line: 1 }]);
         let toks = scan("+");
-        assert_eq!(toks[..], [Token::Plus { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Plus { line: 1 }]);
         let toks = scan(";");
-        assert_eq!(toks[..], [Token::Semicolon { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Semicolon { line: 1 }]);
         let toks = scan("/");
-        assert_eq!(toks[..], [Token::Slash { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Slash { line: 1 }]);
         let toks = scan("*");
-        assert_eq!(toks[..], [Token::Star { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Star { line: 1 }]);
         let toks = scan("!");
-        assert_eq!(toks[..], [Token::Bang { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Bang { line: 1 }]);
         let toks = scan("!=");
-        assert_eq!(toks[..], [Token::BangEql { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::BangEql { line: 1 }]);
         let toks = scan("=");
-        assert_eq!(toks[..], [Token::Eql { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Eql { line: 1 }]);
         let toks = scan("==");
-        assert_eq!(toks[..], [Token::EqlEql { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::EqlEql { line: 1 }]);
         let toks = scan(">");
-        assert_eq!(toks[..], [Token::Greater { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Greater { line: 1 }]);
         let toks = scan(">=");
-        assert_eq!(toks[..], [Token::GreaterEql { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::GreaterEql { line: 1 }]);
         let toks = scan("<");
-        assert_eq!(toks[..], [Token::Less { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Less { line: 1 }]);
         let toks = scan("<=");
-        assert_eq!(toks[..], [Token::LessEql { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::LessEql { line: 1 }]);
         let toks = scan("and");
-        assert_eq!(toks[..], [Token::And { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::And { line: 1 }]);
         let toks = scan("class");
-        assert_eq!(toks[..], [Token::Class { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Class { line: 1 }]);
         let toks = scan("else");
-        assert_eq!(toks[..], [Token::Else { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Else { line: 1 }]);
         let toks = scan("false");
-        assert_eq!(toks[..], [Token::False { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::False { line: 1 }]);
         let toks = scan("for");
-        assert_eq!(toks[..], [Token::For { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::For { line: 1 }]);
         let toks = scan("fun");
-        assert_eq!(toks[..], [Token::Fun { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Fun { line: 1 }]);
         let toks = scan("if");
-        assert_eq!(toks[..], [Token::If { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::If { line: 1 }]);
         let toks = scan("nil");
-        assert_eq!(toks[..], [Token::Nil { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Nil { line: 1 }]);
         let toks = scan("or");
-        assert_eq!(toks[..], [Token::Or { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Or { line: 1 }]);
         let toks = scan("print");
-        assert_eq!(toks[..], [Token::Print { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Print { line: 1 }]);
         let toks = scan("return");
-        assert_eq!(toks[..], [Token::Return { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Return { line: 1 }]);
         let toks = scan("super");
-        assert_eq!(toks[..], [Token::Super { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Super { line: 1 }]);
         let toks = scan("this");
-        assert_eq!(toks[..], [Token::This { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::This { line: 1 }]);
         let toks = scan("true");
-        assert_eq!(toks[..], [Token::True { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::True { line: 1 }]);
         let toks = scan("var");
-        assert_eq!(toks[..], [Token::Var { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::Var { line: 1 }]);
         let toks = scan("while");
-        assert_eq!(toks[..], [Token::While { line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::While { line: 1 }]);
     }
 
     #[test]
     fn scan_identifier() {
         let toks = scan("first _snd _t_r2d_3 a");
-        assert_eq!(toks.len(), 4);
-        assert_eq!(toks[0], Token::Identifier { name: String::from("first"), line: 1, });
-
-        assert_eq!(toks[1], Token::Identifier { name: String::from("_snd"), line: 1, });
-
-        assert_eq!(toks[2], Token::Identifier { name: String::from("_t_r2d_3"), line: 1, });
-
-        assert_eq!(toks[3], Token::Identifier { name: String::from("a"), line: 1, });
+        assert_eq!(toks.toks.len(), 4);
+        assert!(
+            match toks.toks[0] {
+                Token::Identifier { name, line: 1 } => {
+                    toks.strings.get(name) == "first"
+                },
+                _ => false,
+            }
+        );
+        assert!(
+            match toks.toks[1] {
+                Token::Identifier { name, line: 1 } => {
+                    toks.strings.get(name) == "_snd"
+                },
+                _ => false,
+            }
+        );
+        assert!(
+            match toks.toks[2] {
+                Token::Identifier { name, line: 1 } => {
+                    toks.strings.get(name) == "_t_r2d_3"
+                },
+                _ => false,
+            }
+        );
+        assert!(
+            match toks.toks[3] {
+                Token::Identifier { name, line: 1 } => {
+                    toks.strings.get(name) == "a"
+                },
+                _ => false,
+            }
+        );
     }
 
     #[test]
     fn scan_num_literal() {
         let toks = scan("0");
-        assert_eq!(toks[..], [Token::NumLit { value: 0_f64, line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::NumLit { value: 0_f64, line: 1 }]);
 
         let toks = scan("128");
-        assert_eq!(toks[..], [Token::NumLit { value: 128_f64, line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::NumLit { value: 128_f64, line: 1 }]);
 
         let toks = scan("1+2");
         assert_eq!(
-            toks[..],
+            toks.toks[..],
             [
                 Token::NumLit { value: 1_f64, line: 1 },
                 Token::Plus   { line: 1 },
@@ -490,11 +507,11 @@ mod tests {
             );
 
         let toks = scan("1.0");
-        assert_eq!(toks[..], [Token::NumLit { value: 1.0, line: 1 }]);
+        assert_eq!(toks.toks[..], [Token::NumLit { value: 1.0, line: 1 }]);
 
         let toks = scan("-1.0");
         assert_eq!(
-            toks[..],
+            toks.toks[..],
             [
                 Token::Minus  { line: 1 },
                 Token::NumLit { value: 1.0_f64, line: 1 },
@@ -503,7 +520,7 @@ mod tests {
 
         let toks = scan("- 2.0");
         assert_eq!(
-            toks[..],
+            toks.toks[..],
             [
                 Token::Minus  { line: 1 },
                 Token::NumLit { value: 2.0_f64, line: 1 },
@@ -514,12 +531,31 @@ mod tests {
     #[test]
     fn scan_str_literal() {
         let toks = scan(&r#""hello rust""#);
-        assert_eq!(toks[..], [Token::StrLit { content: String::from("hello rust"), line: 1 } ]);
-
+        assert!(
+            match toks.toks[0] {
+                Token::StrLit { content, line: 1 } => {
+                    toks.strings.get(content) == "hello rust"
+                },
+                _ => false,
+            }
+        );
         let toks = scan(r#""""#);
-        assert_eq!(toks[..], [Token::StrLit { content: String::from(""), line: 1 } ]);
-
+        assert!(
+            match toks.toks[0] {
+                Token::StrLit { content, line: 1 } => {
+                    toks.strings.get(content) == ""
+                },
+                _ => false,
+            }
+        );
         let toks = scan(r#""🤔""#);
-        assert_eq!(toks[..], [Token::StrLit { content: String::from("🤔"), line: 1 } ]);
+        assert!(
+            match toks.toks[0] {
+                Token::StrLit { content, line: 1 } => {
+                    toks.strings.get(content) == "🤔"
+                },
+                _ => false,
+            }
+        );
     }
 }
