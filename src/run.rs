@@ -1,9 +1,9 @@
 use crate::chunk::LoxVal;
-use crate::compiler::Compiler;
+use crate::parser::Parser;
 use crate::vm::{VMError, VM};
 
 pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
-    let chunk = Compiler::new(src)
+    let chunk = Parser::new(src)
         .unwrap()
         .compile()
         .unwrap();
