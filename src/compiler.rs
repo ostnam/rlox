@@ -545,6 +545,8 @@ impl<'a> Compiler<'a> {
         if fn_type == FunctionType::Method || fn_type == FunctionType::Ctor {
             self.declare_local("this");
             self.init_last_local();
+            self.declare_local("super");
+            self.init_last_local();
         }
         consume!(self, Token::RParen, "missing ) after function args");
         consume!(self, Token::LBrace, "missing { after function args");
@@ -577,6 +579,20 @@ impl<'a> Compiler<'a> {
             self.init_last_local();
         } else {
             self.emit_instr(OpCode::DefineClass(class_name.clone()));
+        }
+        if tok_matches!(self, Token::Less) {
+            match self.identifier("after 'class'") {
+                Some(s) if s != class_name => s,
+                Some(_) => {
+                    self.emit_error(&CompilationError::Raw {
+                        text: "class can't inherit from itself".to_string(),
+                    });
+                    return;
+                }
+                None => return,
+            };
+            self.variable(false);
+            self.emit_instr(OpCode::Inherit)
         }
         consume!(self, Token::LBrace, "missing { after class name");
         while !tok_matches!(self, Token::RBrace) {
@@ -923,6 +939,34 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn super_(&mut self) {
+        let pos = match self.resolve_local("super") {
+            Some(pos) => pos,
+            None => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: 'super' used outside of method",
+                        self.current_line,
+                    )
+                });
+                return;
+            }
+        };
+        consume!(self, Token::Dot, "expected . after 'super'");
+        match self.identifier("after 'super.'") {
+            Some(s) => self.emit_instr(OpCode::GetSuperMethod(pos, s)),
+            None => {
+                self.emit_error(&CompilationError::Raw {
+                    text: format!(
+                        "[{}]: 'super.' without method name",
+                        self.current_line,
+                    )
+                });
+                return;
+            },
+        }
+    }
+
     /// If the next token is a `Token::Identifier`, returns its `String`.
     /// Otherwise, return `None`, after emitting an error about a missing
     /// identifier in the given `ctx`.
@@ -1004,7 +1048,10 @@ impl<'a> Compiler<'a> {
             Token::Or { .. } => Err(()),
             Token::Print { .. } => Err(()),
             Token::Return { .. } => Err(()),
-            Token::Super { .. } => Err(()),
+            Token::Super { .. } => {
+                self.super_();
+                Ok(())
+            },
             Token::This { .. } => {
                 self.this();
                 Ok(())

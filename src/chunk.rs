@@ -1,4 +1,5 @@
-use std::{fmt::Display, collections::HashMap};
+use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
 use crate::arena::Ref;
 use crate::vm::VMError;
@@ -20,6 +21,7 @@ pub enum LoxVal {
 pub struct Class {
     pub name: String,
     pub methods: HashMap<String, Function>,
+    pub sup: Option<Ref<Class>>,
 }
 
 impl Class {
@@ -41,6 +43,7 @@ pub struct ClassInstance {
 pub struct BoundMethod {
     pub this: Ref<ClassInstance>,
     pub method: Function,
+    pub sup: Option<Ref<Class>>,
 }
 
 type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
@@ -114,7 +117,7 @@ impl std::fmt::Display for LoxVal {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum OpCode {
     Add,
     Call(u8),
@@ -128,8 +131,10 @@ pub enum OpCode {
     GetProperty(String),
     GetGlobal(String),
     GetLocal(LocalVarRef),
+    GetSuperMethod(LocalVarRef, String),
     GetUpval(usize),
     Greater,
+    Inherit,
     Jump(usize),
     JumpIfTrue(usize),
     JumpIfFalse(usize),
@@ -154,10 +159,16 @@ pub struct LocalVarRef {
     pub pos: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Instruction {
     pub op: OpCode,
     pub line: u64,
+}
+
+impl Debug for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Instr, line {}: {}", self.line, self.op)
+    }
 }
 
 impl Display for OpCode {
@@ -175,8 +186,10 @@ impl Display for OpCode {
             OpCode::GetProperty(name) => format!("GET PROPERTY: {name}"),
             OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
             OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
+            OpCode::GetSuperMethod(pos, name) => format!("GET SUPER {} POS: {}", pos.frame, pos.pos),
             OpCode::GetUpval(pos) => format!("GET UPVAL IDX: {pos}"),
             OpCode::Greater => "GREATER".to_string(),
+            OpCode::Inherit => "INHERIT".to_string(),
             OpCode::Jump(jmp_size) => format!("JUMP: {jmp_size} instructions"),
             OpCode::JumpIfFalse(jmp_size) => format!("JUMP IF FALSE: {jmp_size} instructions"),
             OpCode::JumpIfTrue(jmp_size) => format!("JUMP IF TRUE: {jmp_size} instructions"),
@@ -197,6 +210,13 @@ impl Display for OpCode {
         write!(f, "{}", name)
     }
 }
+
+impl std::fmt::Debug for OpCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Chunk (pub Vec<Instruction>);

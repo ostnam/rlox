@@ -88,6 +88,7 @@ pub enum VMError {
     UndefinedProperty {
         prop_name: String,
     },
+    SuperNoSuper,
 }
 
 impl VM {
@@ -265,8 +266,14 @@ impl VM {
                         },
                         Callable::Class(cls) => {
                             let class = self.classes.get(cls);
+                            let mut init_called = false;
+                            let sup = match class.sup {
+                                Some(s) => LoxVal::Class(s),
+                                None => LoxVal::Nil,
+                            };
                             let inst_ref = self.instances.insert(class.new_instance());
                             if let Some(init) = self.classes.get(cls).methods.get("init") {
+                                init_called = true;
                                 frame_added = true;
                                 self.call_frames.push(CallFrame {
                                     function: init.clone(),
@@ -276,9 +283,10 @@ impl VM {
                             } else {
                                 self.pop_val()?;
                             }
-                            self.push_val(
-                                LoxVal::Instance(inst_ref)
-                            );
+                            self.push_val(LoxVal::Instance(inst_ref));
+                            if init_called {
+                                self.push_val(sup);
+                            }
                         },
                         Callable::NativeFunction(f) => {
                             self.apply_native(f, n_args)?;
@@ -286,6 +294,10 @@ impl VM {
                         Callable::Method(m) => {
                             frame_added = true;
                             let method = self.methods.get(m);
+                            let sup = match method.sup {
+                                Some(s) => LoxVal::Class(s),
+                                None => LoxVal::Nil,
+                            };
                             if method.method.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
                                     expected: method.method.arity,
@@ -299,6 +311,7 @@ impl VM {
                                 offset: self.stack.len() - n_args as usize,
                             });
                             self.push_val(LoxVal::Instance(method.this));
+                            self.push_val(sup);
                         },
                     };
                     let prev_fn_idx = if frame_added {
@@ -317,6 +330,7 @@ impl VM {
                     let class = Class {
                         name,
                         methods: HashMap::new(),
+                        sup: None,
                     };
                     let class_ref = self.classes.insert(class);
                     self.push_val(LoxVal::Class(class_ref));
@@ -382,6 +396,43 @@ impl VM {
                         }),
                     }
                 }
+                OpCode::GetSuperMethod(var_ref, name) => {
+                    let supercls_ref = match self.get_local(&var_ref)? {
+                        Some(LoxVal::Class(val)) => val,
+                        Some(LoxVal::Nil) => return Err(VMError::SuperNoSuper),
+                        Some(_) => return Err(VMError::Bug(
+                            "error getting super".to_string()
+                        )),
+                        None => return Err(VMError::LocalResolutionBug {
+                            var_ref,
+                        }),
+                    };
+                    let supercls = self.classes.get(*supercls_ref);
+                    let this_pos = LocalVarRef {
+                        pos: var_ref.pos - 1,
+                        ..var_ref
+                    };
+                    let this = match self.get_local(&this_pos)? {
+                        Some(LoxVal::Instance(r)) => r,
+                        _ => return Err(VMError::Bug(
+                            "Error getting this".to_string(),
+                        )),
+                    };
+                    match supercls.methods.get(&name) {
+                        Some(f) => {
+                            let method = BoundMethod {
+                                this: *this,
+                                method: f.clone(),
+                                sup: supercls.sup,
+                            };
+                            let meth_ref = self.methods.insert(method);
+                            self.push_val(LoxVal::BoundMethod(meth_ref));
+                        }
+                        None => return Err(VMError::UndefinedProperty {
+                            prop_name: name
+                        }),
+                    }
+                }
 
                 OpCode::GetProperty(prop_name) => {
                     let inst_ref = match self.peek(0)? {
@@ -404,6 +455,7 @@ impl VM {
                                 let method = BoundMethod {
                                     this: inst_ref,
                                     method: val.clone(),
+                                    sup: inst.class.sup,
                                 };
                                 let meth_ref = self.methods.insert(method);
                                 self.push_val(LoxVal::BoundMethod(meth_ref));
@@ -432,6 +484,26 @@ impl VM {
                         details: "on the right side of the > operator".to_string(),
                     }),
                 },
+
+                // stack: |  super  |  <--- top
+                //        |   sub   |
+                //  As we are in a class definition, the superclass will be
+                //  popped so that the subclass remains on top of the stack.
+                OpCode::Inherit => {
+                    match (self.pop_val()?, self.peek(0)?) {
+                        (LoxVal::Class(sup), &LoxVal::Class(sub)) => {
+                            self.classes.get_mut(sub).sup = Some(sup);
+                            let inherited = self.classes.get(sup).methods.clone();
+                            self.classes.get_mut(sub).methods = inherited;
+                        }
+                        (other, _) => return Err(VMError::TypeError {
+                            line: 0,
+                            expected: "class".to_string(),
+                            got: other.type_name(),
+                            details: "can only inherit from a class".to_string(),
+                        }),
+                    }
+                }
 
                 OpCode::Jump(tgt) => {
                     self.set_ip(tgt)?;
