@@ -186,7 +186,7 @@ impl Display for OpCode {
             OpCode::GetProperty(name) => format!("GET PROPERTY: {name}"),
             OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
             OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
-            OpCode::GetSuperMethod(pos, name) => format!("GET SUPER {} POS: {}", pos.frame, pos.pos),
+            OpCode::GetSuperMethod(pos, name) => format!("GET SUPER POS: {}, {}, NAME: {}", pos.frame, pos.pos, name),
             OpCode::GetUpval(pos) => format!("GET UPVAL IDX: {pos}"),
             OpCode::Greater => "GREATER".to_string(),
             OpCode::Inherit => "INHERIT".to_string(),
