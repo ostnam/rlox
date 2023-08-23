@@ -2,27 +2,33 @@ use crate::arena::Ref;
 
 pub type Program = Vec<Declaration>;
 
+#[derive(PartialEq, Debug)]
 pub enum Declaration {
     Class {
         name: Ref<String>,
-        super_name: Ref<String>,
+        super_name: Option<Ref<String>>,
         methods: Vec<Function>,
     },
     Fun(Function),
-    Var {
-        name: Ref<String>,
-        val: Option<Expr>,
-    },
+    Var(VarDecl),
     Stmt(Stmt),
 }
 
+#[derive(PartialEq, Debug)]
+pub struct VarDecl {
+    pub name: Ref<String>,
+    pub val: Option<Expr>,
+}
+
+#[derive(PartialEq, Debug)]
 pub struct Function {
-    pub params: Vec<Ref<String>>,
+    pub arity: u8,
     pub body: Block,
 }
 
 pub type Block = Vec<Declaration>;
 
+#[derive(PartialEq, Debug)]
 pub enum Stmt {
     Expr(Expr),
     For {
@@ -42,17 +48,16 @@ pub enum Stmt {
         cond: Expr,
         body: Box<Stmt>,
     },
-    Block,
+    Block(Block),
 }
 
+#[derive(PartialEq, Debug)]
 pub enum ForInit {
-    Decl {
-        name: Ref<String>,
-        val: Option<Expr>,
-    },
+    Decl(VarDecl),
     Expr(Expr),
 }
 
+#[derive(PartialEq, Debug)]
 pub enum Expr {
     Assignment {
         tgt: Box<Expr>,
@@ -68,17 +73,22 @@ pub enum Expr {
         rhs: Box<Expr>,
     },
     Primary(Primary),
-    Call(Box<Expr>),
+    Call {
+        lhs: Box<Expr>,
+        args: Vec<Expr>,
+    },
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
-    Dot(Box<Expr>, Box<Expr>),
+    Dot(Box<Expr>, Ref<String>),
 }
 
+#[derive(PartialEq, Debug)]
 pub enum UnaryOperator {
     Not,
     Neg,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum BinaryOperator {
     Eql,
     NotEql,
@@ -92,6 +102,7 @@ pub enum BinaryOperator {
     LE,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum Primary {
     Bool(bool),
     Nil,
@@ -99,5 +110,5 @@ pub enum Primary {
     Num(f64),
     Str(Ref<String>),
     Name(Ref<String>),
-    Super(Option<String>),
+    Super,
 }
