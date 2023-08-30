@@ -227,6 +227,7 @@ impl Parser {
         Some(expr)
     }
 
+    /// Returns whether the loop of the Pratt parser should continue.
     fn continue_pratt_loop(&self, precedence: PrecedenceLvl) -> bool {
         let next = match &self.current {
             Some(a) => a,
@@ -235,6 +236,7 @@ impl Parser {
         precedence <= PrecedenceLvl::from(next)
     }
 
+    /// Parses a single number. The token must already be consumed.
     fn number(&mut self) -> Option<Expr> {
         if let Token::NumLit { value, .. } = self.previous {
             Some(Expr::Primary(Primary::Num(value)))
@@ -243,6 +245,7 @@ impl Parser {
         }
     }
 
+    /// Parses a string literal. The token must already be consumed.
     fn string(&mut self) -> Option<Expr> {
         if let Token::StrLit { content, .. } = self.previous {
             Some(Expr::Primary(Primary::Str(content)))
@@ -251,13 +254,15 @@ impl Parser {
         }
     }
 
-    // assumes the leading '(' has already been consumed
+    /// Parses an expression between () (but not function calls.
+    /// The leading '(' must already be consumed.
     fn grouping(&mut self) -> Option<Expr> {
         let res = self.expression()?;
         consume!(self, Token::RParen, "unclosed parens");
         Some(res)
     }
 
+    /// Parses expressions involving unary operators.
     fn unary(&mut self, op: UnaryOperator) -> Option<Expr> {
         let val = self.parse_precedence(PrecedenceLvl::Unary)?;
         Some(Expr::Unop {
@@ -266,6 +271,9 @@ impl Parser {
         })
     }
 
+    /// Parses declarations.
+    /// Declaration are the top-level syntactic construct:
+    /// a Lox program is a series of declarations.
     fn declaration(&mut self) -> Option<Declaration> {
         let res = if tok_matches!(self, Token::Var) {
             Some(Declaration::Var(self.var_declaration()?))
@@ -282,6 +290,11 @@ impl Parser {
         res
     }
 
+    /// In case an error occured during parsing, this method will:
+    ///   - `advance()` at least once.
+    ///   - `advance()` until we reach a synchronization point that marks the
+    ///     beginning of a declaration or statement, or we advanced past a semicolon,
+    ///     or there's no token left to consume.
     fn synchronize(&mut self) {
         self.panic_mode = false;
         self.advance();
@@ -305,7 +318,7 @@ impl Parser {
         }
     }
 
-    // The var keyword must already have been matched.
+    /// The var keyword must already have been matched.
     fn var_declaration(&mut self) -> Option<VarDecl> {
         let name = self.identifier("after var keyword")?;
         let val = if tok_matches!(self, Token::Eql) {
@@ -320,6 +333,7 @@ impl Parser {
         })
     }
 
+    /// The fun keyword must already have been matched.
     fn function_declaration(&mut self) -> Option<Declaration> {
         let _ = self.identifier("after fun")?;
         consume!(self, Token::LParen, "missing ( after function name");
