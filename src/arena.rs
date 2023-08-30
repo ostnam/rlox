@@ -19,6 +19,29 @@ pub struct Ref<T> {
     phantom: PhantomData<T>,
 }
 
+#[macro_export]
+/// Concisely check if the values pointed-to by two `Ref` are equal.
+macro_rules! refs_eql {
+    ($arena: expr, $lhs: expr, $rhs: expr) => {
+        {
+            let l = $arena.get($lhs);
+            let r = $arena.get($rhs);
+            l == r
+        }
+    }
+}
+
+#[macro_export]
+/// Concisely check if the value pointed-to by a `Ref` is equal to the passe-in literal value.
+macro_rules! ref_eql_lit {
+    ($arena: expr, $lhs: ident, $lit: literal) => {
+        {
+            let l = $arena.get($lhs);
+            l == lit
+        }
+    }
+}
+
 // we need to implement it manually, otherwise Ref<T> won't be Copy if T isn't.
 impl<T> Clone for Ref<T> {
     fn clone(&self) -> Self {
