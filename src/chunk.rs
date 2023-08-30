@@ -10,17 +10,24 @@ pub enum LoxVal {
     Nil,
     Num(f64),
     Str(String),
-    Function(Function),
-    NativeFunction(NativeFunction),
+    CompiledFn(CompiledFn),
+    NativeFn(NativeFn),
     Class(Ref<Class>),
     Instance(Ref<ClassInstance>),
     BoundMethod(Ref<BoundMethod>),
 }
 
+#[derive(Clone, PartialEq)]
+pub struct CompiledFn {
+    pub arity: u8,
+    pub chunk: Chunk,
+    pub name: Ref<String>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
     pub name: String,
-    pub methods: HashMap<String, Function>,
+    pub methods: HashMap<String, CompiledFn>,
     pub sup: Option<Ref<Class>>,
 }
 
@@ -42,15 +49,15 @@ pub struct ClassInstance {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoundMethod {
     pub this: Ref<ClassInstance>,
-    pub method: Function,
+    pub method: CompiledFn,
     pub sup: Option<Ref<Class>>,
 }
 
-type NativeFunction = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
+type NativeFn = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
 
 pub enum Callable {
-    Function(Function),
-    NativeFunction(NativeFunction),
+    CompiledFn(CompiledFn),
+    NativeFn(NativeFn),
     Class(Ref<Class>),
     Method(Ref<BoundMethod>),
 }
@@ -62,8 +69,8 @@ impl LoxVal {
             LoxVal::Nil     => "nil".to_string(),
             LoxVal::Num(_)  => "number".to_string(),
             LoxVal::Str(_)  => "string".to_string(),
-            LoxVal::Function(_)  => "function".to_string(),
-            LoxVal::NativeFunction(_)  => "function (builtin)".to_string(),
+            LoxVal::CompiledFn(_)  => "function".to_string(),
+            LoxVal::NativeFn(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
             LoxVal::Instance(_)  => format!("instance"),
             LoxVal::BoundMethod(_)  => format!("method"),
@@ -92,8 +99,8 @@ impl std::fmt::Debug for LoxVal {
             LoxVal::Nil     => write!(f, "nil"),
             LoxVal::Num(n)  => write!(f, "Num: {n}"),
             LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
-            LoxVal::Function(fun)  => write!(f, "Function: \"{fun:?}\""),
-            LoxVal::NativeFunction(fun)  => write!(f, "Native function: \"{fun:?}\""),
+            LoxVal::CompiledFn(fun)  => write!(f, "Function: \"{fun:?}\""),
+            LoxVal::NativeFn(fun)  => write!(f, "Native function: \"{fun:?}\""),
             LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
             LoxVal::Instance(val)  => write!(f, "Class instance: \"{val:?}\""),
             LoxVal::BoundMethod(m) => write!(f, "Bound method: {m:?}"),
@@ -108,8 +115,8 @@ impl std::fmt::Display for LoxVal {
             LoxVal::Nil     => write!(f, "nil"),
             LoxVal::Num(n)  => write!(f, "{n}"),
             LoxVal::Str(s)  => write!(f, "{s}"),
-            LoxVal::Function(fun)  => write!(f, "<function: {}>", fun.name),
-            LoxVal::NativeFunction(_)  => write!(f, "<builtin function>"),
+            LoxVal::CompiledFn(fun)  => write!(f, "<function: {}>", fun.name),
+            LoxVal::NativeFn(_)  => write!(f, "<builtin function>"),
             LoxVal::Class(_)  => write!(f, "<class>"),
             LoxVal::Instance(_)  => write!(f, "<class instance>"),
             LoxVal::BoundMethod(_)  => write!(f, "<method>"),
@@ -237,14 +244,7 @@ impl Chunk {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub struct Function {
-    pub arity: u8,
-    pub chunk: Chunk,
-    pub name: String,
-}
-
-impl std::fmt::Debug for Function {
+impl std::fmt::Debug for CompiledFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
         writeln!(f, "arity {}:", self.arity)?;
@@ -256,9 +256,9 @@ impl std::fmt::Debug for Function {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FunctionType {
+pub enum FnType {
     Regular,
-    Script,
+    Main,
     Method,
     Ctor,
 }
