@@ -15,6 +15,12 @@ pub struct Parser {
     parsed: Program,
 }
 
+pub struct Parse {
+    pub strings: Arena<String>,
+    pub functions: Arena<Function>,
+    pub program: Program,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum PrecedenceLvl {
     Null,
@@ -137,7 +143,7 @@ impl Parser {
     }
 
     /// Main parsing method.
-    pub fn parse(mut self) -> Option<Program> {
+    pub fn parse(mut self) -> Option<Parse> {
         self.advance();
         while self.current.is_some() {
             let decl = self.declaration()?;
@@ -147,7 +153,11 @@ impl Parser {
         if self.had_error {
             None
         } else {
-            Some(self.parsed)
+            Some(Parse {
+                functions: self.functions,
+                strings: self.strings,
+                program: self.parsed,
+            })
         }
     }
 
@@ -593,7 +603,7 @@ mod tests {
     }
 
     fn run_parser(program: &str) -> Option<Vec<Declaration>> {
-        Parser::new(program).unwrap().parse()
+        Parser::new(program).unwrap().parse().map(|x| x.program)
     }
 
     #[test]
