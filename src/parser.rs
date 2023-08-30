@@ -6,6 +6,7 @@ use crate::scanner::{Scanner, Token, ScanError, ScanResult};
 pub struct Parser {
     scanner: Box<dyn Iterator<Item=Token>>,
     strings: Arena<String>,
+    functions: Arena<Function>,
     previous: Token,
     current: Option<Token>,
     had_error: bool,
@@ -125,6 +126,7 @@ impl Parser {
         Ok(Parser {
             scanner: Box::new(scanner),
             strings,
+            functions: Arena::new(),
             previous: Token::LParen { line: 0 },
             current: None,
             had_error: false,
@@ -333,10 +335,14 @@ impl Parser {
         }
         consume!(self, Token::LBrace, "missing { after function args");
         let block = self.block()?;
-        Some(Declaration::Fun(Function {
+        let new_fn = Function {
             arity,
             body: block,
-        }))
+            closed_over: Vec::new(),
+            sub_closures: Vec::new(),
+        };
+        let fn_ref = self.functions.insert(new_fn);
+        Some(Declaration::Fun(fn_ref))
     }
 
     fn class_declaration(&mut self) -> Option<Declaration> {

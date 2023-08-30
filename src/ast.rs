@@ -7,9 +7,9 @@ pub enum Declaration {
     Class {
         name: Ref<String>,
         super_name: Option<Ref<String>>,
-        methods: Vec<Function>,
+        methods: Vec<Ref<Function>>,
     },
-    Fun(Function),
+    Fun(Ref<Function>),
     Var(VarDecl),
     Stmt(Stmt),
 }
@@ -24,6 +24,14 @@ pub struct VarDecl {
 pub struct Function {
     pub arity: u8,
     pub body: Block,
+    pub closed_over: Vec<StackRef>,
+    pub sub_closures: Vec<Ref<Function>>,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct StackRef {
+    frame: usize,
+    index: usize,
 }
 
 pub type Block = Vec<Declaration>;
