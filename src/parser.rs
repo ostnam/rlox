@@ -712,7 +712,7 @@ mod tests {
     #[test]
     fn parse_prefix_and_infix() {
         assert_eq!(
-            run_parser_expr("-1 + 2 * 3"),
+            run_parser_expr("-1 + 2 * -3"),
             Expr::Binop {
                 op: BinaryOperator::Plus,
                 lhs: Box::new(Expr::Unop {
@@ -722,7 +722,9 @@ mod tests {
                 rhs: Box::new(Expr::Binop {
                     op: BinaryOperator::Mult,
                     lhs: Box::new(Expr::Primary(Primary::Num(2.0))),
-                    rhs: Box::new(Expr::Primary(Primary::Num(3.0))),
+                    rhs: Box::new(Expr::Unop {
+                        op: UnaryOperator::Neg,
+                        val: Box::new(Expr::Primary(Primary::Num(3.0)))}),
                 })
             }
         )
