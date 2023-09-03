@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 use crate::arena::Ref;
 use crate::vm::VMError;
@@ -124,7 +124,7 @@ impl std::fmt::Display for LoxVal {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
     Call(u8),
@@ -166,94 +166,14 @@ pub struct LocalVarRef {
     pub pos: usize,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     pub op: OpCode,
     pub line: u64,
 }
 
-impl Debug for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Instr, line {}: {}", self.line, self.op)
-    }
-}
-
-impl Display for OpCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self {
-            OpCode::Add => "ADD".to_string(),
-            OpCode::Call(args) => format!("CALL WITH {args} args"),
-            OpCode::Class(cls) => format!("CLASS: {}", cls),
-            OpCode::Closure(f) => format!("CLOSURE: {}", f.name),
-            OpCode::Constant(idx) => format!("CONSTANT {idx}"),
-            OpCode::DefineClass(name) => format!("DEFCLASS {name}"),
-            OpCode::DefineGlobal(name) => format!("DEFGLOBAL {name}"),
-            OpCode::Divide => "DIVIDE".to_string(),
-            OpCode::Equal => "EQUAL".to_string(),
-            OpCode::GetProperty(name) => format!("GET PROPERTY: {name}"),
-            OpCode::GetGlobal(name) => format!("GET GLOBAL: {name}"),
-            OpCode::GetLocal(pos) => format!("GET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
-            OpCode::GetSuperMethod(pos, name) => format!("GET SUPER POS: {}, {}, NAME: {}", pos.frame, pos.pos, name),
-            OpCode::GetUpval(pos) => format!("GET UPVAL IDX: {pos}"),
-            OpCode::Greater => "GREATER".to_string(),
-            OpCode::Inherit => "INHERIT".to_string(),
-            OpCode::Jump(jmp_size) => format!("JUMP: {jmp_size} instructions"),
-            OpCode::JumpIfFalse(jmp_size) => format!("JUMP IF FALSE: {jmp_size} instructions"),
-            OpCode::JumpIfTrue(jmp_size) => format!("JUMP IF TRUE: {jmp_size} instructions"),
-            OpCode::Less => "LESS".to_string(),
-            OpCode::Method(name) => format!("METHOD: {name}"),
-            OpCode::Multiply => "MULTIPLY".to_string(),
-            OpCode::Negate => "NEGATE".to_string(),
-            OpCode::Not => "NOT".to_string(),
-            OpCode::Pop => "POP".to_string(),
-            OpCode::Print => "PRINT".to_string(),
-            OpCode::Return => "RETURN".to_string(),
-            OpCode::SetProperty(name) => format!("SET PROPERTY: {name}"),
-            OpCode::SetGlobal(name) => format!("SET GLOBAL: {name}"),
-            OpCode::SetLocal(pos) => format!("SET LOCAL FRAME: {} POS: {}", pos.frame, pos.pos),
-            OpCode::SetUpval(pos) => format!("SET UPVAL IDX: {pos}"),
-            OpCode::Substract => "SUBSTRACT".to_string(),
-        };
-        write!(f, "{}", name)
-    }
-}
-
-impl std::fmt::Debug for OpCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self, f)
-    }
-}
-
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Chunk (pub Vec<Instruction>);
-
-impl Chunk {
-    pub fn disassemble(&self, name: &str) {
-        println!("== {name} ==");
-        let mut previous = 0;
-        for chunk in &self.0 {
-            let line_marker = if chunk.line == previous {
-                "|".to_string()
-            } else {
-                previous = chunk.line;
-                previous.to_string()
-            };
-            println!("{line_marker}:{}", chunk.op);
-        }
-    }
-}
-
-impl std::fmt::Debug for CompiledFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "function {}:", self.name)?;
-        writeln!(f, "arity {}:", self.arity)?;
-        for instr in &self.chunk.0 {
-            writeln!(f, "{instr:?}")?;
-        }
-        write!(f, "")
-    }
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FnType {
