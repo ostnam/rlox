@@ -1,21 +1,10 @@
-use rlox::chunk::LoxVal;
+use rlox::chunk::OwnedLoxVal;
+use rlox::compiler::Compiler;
 use rlox::parser::Parser;
 use rlox::vm::{VMError, VM};
 
-pub fn run_expr(src: &str) -> Result<LoxVal, VMError> {
-    let chunk = Parser::new(src)
-        .unwrap()
-        .compile_expr()
-        .unwrap();
-
-    VM::from(chunk).interpret()
-}
-
-pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
-    let chunk = Parser::new(src)
-        .unwrap()
-        .compile()
-        .unwrap();
-
-    VM::from(chunk).interpret()
+pub fn run_program(src: &str) -> Result<OwnedLoxVal, VMError> {
+    let parsed = Parser::new(src).unwrap().parse().unwrap();
+    let compiled = Compiler::compile(parsed).unwrap();
+    VM::from(compiled).interpret()
 }

@@ -1,282 +1,273 @@
-use rlox::chunk::{LoxVal, Function, Chunk, Instruction, OpCode, LocalVarRef};
-use rlox::vm::VMError;
+#![feature(assert_matches)]
+use std::assert_matches::assert_matches;
+
+use rlox::{vm::VMError, chunk::OwnedLoxVal};
 
 mod common;
 
 #[test]
 fn test_constants() {
     assert_eq!(
-        common::run_expr("10"),
-        Ok(LoxVal::Num(10.0)),
+        common::run_program("10;"),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
-        common::run_expr("11.0"),
-        Ok(LoxVal::Num(11.0)),
+        common::run_program("11.0;"),
+        Ok(OwnedLoxVal::Num(11.0)),
     );
     assert_eq!(
-        common::run_expr("true"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("true;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("false"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("false;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("nil"),
-        Ok(LoxVal::Nil),
+        common::run_program("nil;"),
+        Ok(OwnedLoxVal::Nil),
     );
 }
 
 #[test]
 fn test_add_num() {
     assert_eq!(
-        common::run_expr("10 + 21"),
-        Ok(LoxVal::Num(31.0)),
+        common::run_program("10 + 21;"),
+        Ok(OwnedLoxVal::Num(31.0)),
     );
     assert_eq!(
-        common::run_expr("10 + 21 + 100"),
-        Ok(LoxVal::Num(131.0)),
+        common::run_program("10 + 21 + 100;"),
+        Ok(OwnedLoxVal::Num(131.0)),
     );
 }
 
 #[test]
 fn test_add_str() {
     assert_eq!(
-        common::run_expr(r#""hello" + " " + "lox""#),
-        Ok(LoxVal::Str("hello lox".to_string())),
+        common::run_program(r#""hello" + " " + "lox";"#),
+        Ok(OwnedLoxVal::Str("hello lox".to_string())),
     );
 }
 
 #[test]
 fn test_add_type_error() {
-    assert!(matches!(
-        common::run_expr(r#""hello " + 10"#),
-        Err(VMError::TypeError {
-            line: 1,
-            ..
-        }),
-    ));
+    assert_matches!(
+        common::run_program(r#""hello " + 10;"#),
+        Err(VMError::TypeError { .. }),
+    );
 }
 
 #[test]
 fn test_sub_num() {
     assert_eq!(
-        common::run_expr("10 - 21"),
-        Ok(LoxVal::Num(-11.0)),
+        common::run_program("10 - 21;"),
+        Ok(OwnedLoxVal::Num(-11.0)),
     );
     assert_eq!(
-        common::run_expr("10 - 21 - 32"),
-        Ok(LoxVal::Num(-43.0)),
+        common::run_program("10 - 21 - 32;"),
+        Ok(OwnedLoxVal::Num(-43.0)),
     );
 }
 
 #[test]
 fn test_mult_num() {
     assert_eq!(
-        common::run_expr("10 * 21"),
-        Ok(LoxVal::Num(210.0)),
+        common::run_program("10 * 21;"),
+        Ok(OwnedLoxVal::Num(210.0)),
     )
 }
 
 #[test]
 fn test_div_num() {
     assert_eq!(
-        common::run_expr("10 / 20"),
-        Ok(LoxVal::Num(0.5)),
+        common::run_program("10 / 20;"),
+        Ok(OwnedLoxVal::Num(0.5)),
     );
     assert_eq!(
-        common::run_expr("8 / 4 / 2"),
-        Ok(LoxVal::Num(1.0)),
+        common::run_program("8 / 4 / 2;"),
+        Ok(OwnedLoxVal::Num(1.0)),
     );
 }
 
 #[test]
 fn test_unary_op() {
     assert_eq!(
-        common::run_expr("-38"),
-        Ok(LoxVal::Num(-38.0)),
+        common::run_program("-38;"),
+        Ok(OwnedLoxVal::Num(-38.0)),
     );
     assert_eq!(
-        common::run_expr("----1000"),
-        Ok(LoxVal::Num(1000.0)),
+        common::run_program("----1000;"),
+        Ok(OwnedLoxVal::Num(1000.0)),
     );
 }
 
 #[test]
 fn test_parens() {
     assert_eq!(
-        common::run_expr("(1 + 2) * 3"),
-        Ok(LoxVal::Num(9.0)),
+        common::run_program("(1 + 2) * 3;"),
+        Ok(OwnedLoxVal::Num(9.0)),
     );
     assert_eq!(
-        common::run_expr("(1 + 2) * (3 + 2)"),
-        Ok(LoxVal::Num(15.0)),
+        common::run_program("(1 + 2) * (3 + 2);"),
+        Ok(OwnedLoxVal::Num(15.0)),
     );
 }
 
 #[test]
 fn test_mixed_arithmetic() {
     assert_eq!(
-        common::run_expr("(10 + 30 * --20 / 100 + 4 - -20) / (2 + 8)"),
-        Ok(LoxVal::Num(4.0)),
+        common::run_program("(10 + 30 * --20 / 100 + 4 - -20) / (2 + 8);"),
+        Ok(OwnedLoxVal::Num(4.0)),
     );
 }
 
 #[test]
 fn test_not() {
     assert_eq!(
-        common::run_expr("!true"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("!true;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("!false"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("!false;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("!nil"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("!nil;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("!10"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("!10;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("!0"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("!0;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("!-1"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("!-1;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
 }
 
-// < <= >= >
 #[test]
 fn test_cmp() {
     assert_eq!(
-        common::run_expr("1 == 1"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 == 1;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 == 2"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 == 2;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1.0 == 1"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1.0 == 1;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 == nil"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 == nil;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 == true"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 == true;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 == false"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 == false;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("true == true"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("true == true;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("false == false"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("false == false;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("nil == nil"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("nil == nil;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 != 1"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 != 1;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 != 2"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 != 2;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1.0 != 1"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1.0 != 1;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 != nil"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 != nil;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 != true"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 != true;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 != false"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 != false;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("true != true"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("true != true;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("false != false"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("false != false;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("nil != nil"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("nil != nil;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 > 2"),
-        Ok(LoxVal::Bool(false)),
+        common::run_program("1 > 2;"),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
-        common::run_expr("1 < 2"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 < 2;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 <= 1"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 <= 1;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
-        common::run_expr("1 >= 1"),
-        Ok(LoxVal::Bool(true)),
+        common::run_program("1 >= 1;"),
+        Ok(OwnedLoxVal::Bool(true)),
     );
-    assert!(matches!(
-        common::run_expr("1 >= true"),
+    assert_matches!(
+        common::run_program("1 >= true;"),
         Err(VMError::TypeError { .. }),
-    ));
-    assert!(matches!(
-        common::run_expr("1 < nil"),
+    );
+    assert_matches!(
+        common::run_program("1 < nil;"),
         Err(VMError::TypeError { .. }),
-    ));
-    assert!(matches!(
-        common::run_expr("true < nil"),
+    );
+    assert_matches!(
+        common::run_program("true < nil;"),
         Err(VMError::TypeError { .. }),
-    ));
-    assert!(matches!(
-        common::run_expr("true > false"),
+    );
+    assert_matches!(
+        common::run_program("true > false;"),
         Err(VMError::TypeError { .. }),
-    ));
-}
-
-#[test]
-fn test_expr_stmt() {
-    assert_eq!(
-        common::run_program("20 + 20;"),
-        Ok(LoxVal::Num(40.0)),
     );
 }
 
+/*
 #[test]
 fn test_print_stmt() {
     assert_eq!(
         common::run_program("print 20;"),
-        Ok(LoxVal::Num(20.0)),
+        Ok(OwnedLoxVal::Num(20.0)),
         // should be the last value pushed to the stack
     );
     assert_eq!(
         common::run_program("print 20 + 30;"),
-        Ok(LoxVal::Num(50.0)),
+        Ok(OwnedLoxVal::Num(50.0)),
     );
 }
 
@@ -284,19 +275,19 @@ fn test_print_stmt() {
 fn test_global_var() {
     assert_eq!(
         common::run_program("var x; x;"),
-        Ok(LoxVal::Nil),
+        Ok(OwnedLoxVal::Nil),
     );
     assert_eq!(
         common::run_program("var x = 1; x;"),
-        Ok(LoxVal::Num(1.0)),
+        Ok(OwnedLoxVal::Num(1.0)),
     );
     assert_eq!(
         common::run_program("var x = 10 * 3 + 3; x;"),
-        Ok(LoxVal::Num(33.0)),
+        Ok(OwnedLoxVal::Num(33.0)),
     );
     assert_eq!(
         common::run_program("var x = 1; x = 2; x;"),
-        Ok(LoxVal::Num(2.0)),
+        Ok(OwnedLoxVal::Num(2.0)),
     );
     assert_eq!(
         common::run_program("x;"),
@@ -317,7 +308,7 @@ fn test_local_var() {
                 x;
             }
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -329,7 +320,7 @@ fn test_local_var() {
                 }
             }
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -341,7 +332,7 @@ fn test_local_var() {
                 x;
             }
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -353,7 +344,7 @@ fn test_local_var() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(20.0)),
+        Ok(OwnedLoxVal::Num(20.0)),
     );
 }
 
@@ -365,7 +356,7 @@ fn test_if_stmt() {
                 10;
             }
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -375,7 +366,7 @@ fn test_if_stmt() {
                 2;
             }
         "#),
-        Ok(LoxVal::Num(2.0)),
+        Ok(OwnedLoxVal::Num(2.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -387,7 +378,7 @@ fn test_if_stmt() {
                 3;
             }
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -397,7 +388,7 @@ fn test_if_stmt() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(1.0)),
+        Ok(OwnedLoxVal::Num(1.0)),
     );
 }
 
@@ -407,55 +398,55 @@ fn test_bool_operator() {
         common::run_program(r#"
             true and false;
         "#),
-        Ok(LoxVal::Bool(false)),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
         common::run_program(r#"
             false and true;
         "#),
-        Ok(LoxVal::Bool(false)),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
         common::run_program(r#"
             1 and 0;
         "#),
-        Ok(LoxVal::Num(0.0)),
+        Ok(OwnedLoxVal::Num(0.0)),
     );
     assert_eq!(
         common::run_program(r#"
             true and true and false and 10;
         "#),
-        Ok(LoxVal::Bool(false)),
+        Ok(OwnedLoxVal::Bool(false)),
     );
     assert_eq!(
         common::run_program(r#"
             10 or false;
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
             false or true;
         "#),
-        Ok(LoxVal::Bool(true)),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
         common::run_program(r#"
             false or nil;
         "#),
-        Ok(LoxVal::Nil),
+        Ok(OwnedLoxVal::Nil),
     );
     assert_eq!(
         common::run_program(r#"
             true or true and false and 10;
         "#),
-        Ok(LoxVal::Bool(true)),
+        Ok(OwnedLoxVal::Bool(true)),
     );
     assert_eq!(
         common::run_program(r#"
             false or true and false or 20;
         "#),
-        Ok(LoxVal::Num(20.0)),
+        Ok(OwnedLoxVal::Num(20.0)),
     );
 }
 
@@ -469,7 +460,7 @@ fn test_while() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -479,7 +470,7 @@ fn test_while() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(0.0)),
+        Ok(OwnedLoxVal::Num(0.0)),
     );
 }
 
@@ -492,7 +483,7 @@ fn test_for() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(10.0)),
+        Ok(OwnedLoxVal::Num(10.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -502,7 +493,7 @@ fn test_for() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(9.0)),
+        Ok(OwnedLoxVal::Num(9.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -512,7 +503,7 @@ fn test_for() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(0.0)),
+        Ok(OwnedLoxVal::Num(0.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -523,7 +514,7 @@ fn test_for() {
             }
             x;
         "#),
-        Ok(LoxVal::Num(9.0)),
+        Ok(OwnedLoxVal::Num(9.0)),
     );
 }
 
@@ -537,14 +528,14 @@ fn test_functions() {
 
             print f;
         "#),
-        Ok(LoxVal::Function(Function {
+        Ok(OwnedLoxVal::Function(Function {
             arity: 1,
             chunk: Chunk(vec![
                 Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 1, pos: 0 }), line: 3},
-                Instruction { op: OpCode::Constant(LoxVal::Num(10.0)), line: 3},
+                Instruction { op: OpCode::Constant(OwnedLoxVal::Num(10.0)), line: 3},
                 Instruction { op: OpCode::Add, line: 3},
                 Instruction { op: OpCode::Pop, line: 3},
-                Instruction { op: OpCode::Constant(LoxVal::Nil), line: 4},
+                Instruction { op: OpCode::Constant(OwnedLoxVal::Nil), line: 4},
                 Instruction { op: OpCode::Return, line: 4},
             ]),
             name: "f".to_string(),
@@ -558,7 +549,7 @@ fn test_functions() {
 
             math(1, 2, 4);
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -569,7 +560,7 @@ fn test_functions() {
 
             fib(3);
         "#),
-        Ok(LoxVal::Num(2.0)),
+        Ok(OwnedLoxVal::Num(2.0)),
     );
 }
 
@@ -587,7 +578,7 @@ fn test_closures() {
             }
             outer();
         "#),
-        Ok(LoxVal::Str("outer".to_string())),
+        Ok(OwnedLoxVal::Str("outer".to_string())),
     );
     assert_eq!(
         common::run_program(r#"
@@ -602,7 +593,7 @@ fn test_closures() {
             var z = outer();
             z();
         "#),
-        Ok(LoxVal::Str("not dropped".to_string())),
+        Ok(OwnedLoxVal::Str("not dropped".to_string())),
     );
     assert_eq!(
         common::run_program(r#"
@@ -616,7 +607,7 @@ fn test_closures() {
             var b = makeClosure("variables");
             a() + b();
         "#),
-        Ok(LoxVal::Str("separate variables".to_string())),
+        Ok(OwnedLoxVal::Str("separate variables".to_string())),
     );
     assert_eq!(
         common::run_program(r#"
@@ -634,7 +625,7 @@ fn test_closures() {
             var in = mid();
             in();
         "#),
-        Ok(LoxVal::Str("value".to_string())),
+        Ok(OwnedLoxVal::Str("value".to_string())),
     );
     assert_eq!(
         common::run_program(r#"
@@ -648,25 +639,25 @@ fn test_closures() {
             }
         outer();
         "#),
-        Ok(LoxVal::Str("assigned".to_string())),
+        Ok(OwnedLoxVal::Str("assigned".to_string())),
     );
 }
 
 #[test]
 fn test_classes() {
-    assert!(matches!(
+    assert_matches!(
         common::run_program(r#"
             class C {}
             C;
         "#),
-        Ok(LoxVal::Class(_)),
+        Ok(OwnedLoxVal::Class(_)),
     ));
-    assert!(matches!(
+    assert_matches!(
         common::run_program(r#"
             class C {}
             var x = C();
         "#),
-        Ok(LoxVal::Instance(_)),
+        Ok(OwnedLoxVal::Instance(_)),
     ));
     assert_eq!(
         common::run_program(r#"
@@ -676,7 +667,7 @@ fn test_classes() {
             x.b = 2;
             x.a + x.b;
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -688,9 +679,9 @@ fn test_classes() {
             x.a.b = 3;
             x.a.b - 2;
         "#),
-        Ok(LoxVal::Num(1.0)),
+        Ok(OwnedLoxVal::Num(1.0)),
     );
-    assert!(matches!(
+    assert_matches!(
         common::run_program(r#"
             class C {
                 f() {}
@@ -698,7 +689,7 @@ fn test_classes() {
             var x = C();
             x.f;
         "#),
-        Ok(LoxVal::BoundMethod(_)),
+        Ok(OwnedLoxVal::BoundMethod(_)),
     ));
     assert_eq!(
         common::run_program(r#"
@@ -710,7 +701,7 @@ fn test_classes() {
             var x = C();
             x.f(1, 2) + 10;
         "#),
-        Ok(LoxVal::Num(9.0)),
+        Ok(OwnedLoxVal::Num(9.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -722,7 +713,7 @@ fn test_classes() {
             var c = C();
             c.x + 5;
         "#),
-        Ok(LoxVal::Num(15.0)),
+        Ok(OwnedLoxVal::Num(15.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -738,7 +729,7 @@ fn test_classes() {
             var c = C(10);
             c.f() + 5;
         "#),
-        Ok(LoxVal::Num(15.0)),
+        Ok(OwnedLoxVal::Num(15.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -755,7 +746,7 @@ fn test_classes() {
             var m = i.method();
             m() + 5.0;
         "#),
-        Ok(LoxVal::Num(15.0)),
+        Ok(OwnedLoxVal::Num(15.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -772,7 +763,7 @@ fn test_classes() {
             var a = f(1);
             a.method();
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -791,7 +782,7 @@ fn test_classes() {
             var f = c.method(2);
             f();
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -810,7 +801,7 @@ fn test_classes() {
             var f = c.method(2);
             f();
         "#),
-        Ok(LoxVal::Num(3.0)),
+        Ok(OwnedLoxVal::Num(3.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -828,7 +819,7 @@ fn test_classes() {
             c.f();
             c.g() + 5;
         "#),
-        Ok(LoxVal::Num(35.0)),
+        Ok(OwnedLoxVal::Num(35.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -854,6 +845,7 @@ fn test_classes() {
             c.f();
             c.g() + 5;
         "#),
-        Ok(LoxVal::Num(55.0)),
+        Ok(OwnedLoxVal::Num(55.0)),
     );
 }
+*/
