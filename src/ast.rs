@@ -1,4 +1,4 @@
-use crate::arena::Ref;
+use crate::{arena::Ref, chunk::OpCode};
 
 pub type Program = Vec<Declaration>;
 
@@ -119,4 +119,34 @@ pub enum Primary {
     Str(Ref<String>),
     Name(Ref<String>),
     Super,
+}
+
+pub trait AsOpcode {
+    fn as_opcode(&self) -> OpCode;
+}
+
+impl AsOpcode for UnaryOperator {
+    fn as_opcode(&self) -> OpCode {
+        match self {
+            UnaryOperator::Not => OpCode::Not,
+            UnaryOperator::Neg => OpCode::Negate,
+        }
+    }
+}
+
+impl AsOpcode for BinaryOperator {
+    fn as_opcode(&self) -> OpCode {
+        match self {
+            BinaryOperator::Eql => OpCode::Equal,
+            BinaryOperator::NotEql => OpCode::NotEqual,
+            BinaryOperator::Minus => OpCode::Substract,
+            BinaryOperator::Plus => OpCode::Add,
+            BinaryOperator::Mult => OpCode::Multiply,
+            BinaryOperator::Div => OpCode::Divide,
+            BinaryOperator::GT => OpCode::GT,
+            BinaryOperator::GE => OpCode::GE,
+            BinaryOperator::LT => OpCode::LT,
+            BinaryOperator::LE => OpCode::LE,
+        }
+    }
 }
