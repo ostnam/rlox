@@ -4,62 +4,74 @@ use std::fmt::Debug;
 use crate::arena::Ref;
 use crate::vm::VMError;
 
-#[derive(Clone, PartialEq)]
+/// Every value Lox programs can manipulate
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoxVal {
     Bool(bool),
     Nil,
     Num(f64),
-    Str(String),
-    CompiledFn(CompiledFn),
+    Str(Ref<String>),
+    /// Used for functions, closures and methods
+    Closure(Ref<Closure>),
     NativeFn(NativeFn),
     Class(Ref<Class>),
     Instance(Ref<ClassInstance>),
-    BoundMethod(Ref<BoundMethod>),
 }
 
-#[derive(Clone, PartialEq)]
-pub struct CompiledFn {
+/// Like a `LoxVal`, but every `Ref<T>` field is owned instead.
+/// Used to return values from the VM.
+#[derive(Clone, Debug, PartialEq)]
+pub enum OwnedLoxVal {
+    Bool(bool),
+    Nil,
+    Num(f64),
+    Str(String),
+    Closure(Closure),
+    NativeFn(NativeFn),
+    Class(Class),
+    Instance(ClassInstance),
+}
+
+/// Represents functions, closures and methods.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Closure {
     pub arity: u8,
     pub chunk: Chunk,
     pub name: Ref<String>,
+    /// `None` unless it's a method.
+    pub this: Option<Ref<ClassInstance>>,
+    /// `None` unless it's a method from a class with a superclass.
+    pub sup: Option<Ref<Class>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
-    pub name: String,
-    pub methods: HashMap<String, CompiledFn>,
+    pub name: Ref<String>,
+    pub methods: HashMap<String, Ref<Closure>>,
     pub sup: Option<Ref<Class>>,
-}
-
-impl Class {
-    pub fn new_instance(&self) -> ClassInstance {
-        ClassInstance {
-            class: self.clone(),
-            fields: HashMap::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassInstance {
-    pub class: Class,
+    pub class: Ref<Class>,
     pub fields: HashMap<String, LoxVal>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct BoundMethod {
-    pub this: Ref<ClassInstance>,
-    pub method: CompiledFn,
-    pub sup: Option<Ref<Class>>,
+/// Instantiate a new, empty `ClassInstance` of the passed-in `class`.
+/// Doesn't evaluate the constructor.
+pub fn new_class_instance(class: Ref<Class>) -> ClassInstance {
+    ClassInstance {
+        class,
+        fields: HashMap::new(),
+    }
 }
 
 type NativeFn = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
 
 pub enum Callable {
-    CompiledFn(CompiledFn),
+    Closure(Ref<Closure>),
     NativeFn(NativeFn),
     Class(Ref<Class>),
-    Method(Ref<BoundMethod>),
 }
 
 impl LoxVal {
@@ -69,11 +81,10 @@ impl LoxVal {
             LoxVal::Nil     => "nil".to_string(),
             LoxVal::Num(_)  => "number".to_string(),
             LoxVal::Str(_)  => "string".to_string(),
-            LoxVal::CompiledFn(_)  => "function".to_string(),
+            LoxVal::Closure(_)  => "function".to_string(),
             LoxVal::NativeFn(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
             LoxVal::Instance(_)  => format!("instance"),
-            LoxVal::BoundMethod(_)  => format!("method"),
         }
     }
 
@@ -92,45 +103,13 @@ impl LoxVal {
     }
 }
 
-impl std::fmt::Debug for LoxVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LoxVal::Bool(b) => write!(f, "Bool: {b}"),
-            LoxVal::Nil     => write!(f, "nil"),
-            LoxVal::Num(n)  => write!(f, "Num: {n}"),
-            LoxVal::Str(s)  => write!(f, "Str: \"{s}\""),
-            LoxVal::CompiledFn(fun)  => write!(f, "Function: \"{fun:?}\""),
-            LoxVal::NativeFn(fun)  => write!(f, "Native function: \"{fun:?}\""),
-            LoxVal::Class(cls)  => write!(f, "Class: \"{cls:?}\""),
-            LoxVal::Instance(val)  => write!(f, "Class instance: \"{val:?}\""),
-            LoxVal::BoundMethod(m) => write!(f, "Bound method: {m:?}"),
-        }
-    }
-}
-
-impl std::fmt::Display for LoxVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LoxVal::Bool(b) => write!(f, "{b}"),
-            LoxVal::Nil     => write!(f, "nil"),
-            LoxVal::Num(n)  => write!(f, "{n}"),
-            LoxVal::Str(s)  => write!(f, "{s}"),
-            LoxVal::CompiledFn(fun)  => write!(f, "<function: {}>", fun.name),
-            LoxVal::NativeFn(_)  => write!(f, "<builtin function>"),
-            LoxVal::Class(_)  => write!(f, "<class>"),
-            LoxVal::Instance(_)  => write!(f, "<class instance>"),
-            LoxVal::BoundMethod(_)  => write!(f, "<method>"),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
     Call(u8),
     Constant(LoxVal),
     Class(Ref<String>),
-    Closure(Ref<CompiledFn>),
+    Closure(Ref<Closure>),
     DefineClass(Ref<String>),
     DefineGlobal(Ref<String>),
     Divide,
@@ -140,16 +119,19 @@ pub enum OpCode {
     GetLocal(LocalVarRef),
     GetSuperMethod(LocalVarRef, Ref<String>),
     GetUpval(usize),
-    Greater,
+    GE,
+    GT,
     Inherit,
     Jump(usize),
     JumpIfTrue(usize),
     JumpIfFalse(usize),
-    Less,
+    LE,
+    LT,
     Method(Ref<String>),
     Multiply,
     Negate,
     Not,
+    NotEqual,
     Pop,
     Print,
     Return,
@@ -181,73 +163,4 @@ pub enum FnType {
     Main,
     Method,
     Ctor,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn loxval_display() {
-        assert_eq!(
-            format!("{}", LoxVal::Bool(true)),
-            "true".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Bool(false)),
-            "false".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Nil),
-            "nil".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Num(3.0)),
-            "3".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Num(3.14)),
-            "3.14".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Num(-3.14)),
-            "-3.14".to_string(),
-        );
-        assert_eq!(
-            format!("{}", LoxVal::Str("hello world!".to_string())),
-            "hello world!".to_string(),
-        );
-    }
-
-    #[test]
-    fn loxval_debug() {
-        assert_eq!(
-            format!("{:?}", LoxVal::Bool(true)),
-            "Bool: true".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Bool(false)),
-            "Bool: false".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Nil),
-            "nil".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Num(3.0)),
-            "Num: 3".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Num(3.14)),
-            "Num: 3.14".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Num(-3.14)),
-            "Num: -3.14".to_string(),
-        );
-        assert_eq!(
-            format!("{:?}", LoxVal::Str("hello world!".to_string())),
-            r#"Str: "hello world!""#.to_string(),
-        );
-    }
 }

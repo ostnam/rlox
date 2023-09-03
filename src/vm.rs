@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use crate::arena::Arena;
-use crate::chunk::{Class, BoundMethod};
-use crate::chunk::{Instruction, LoxVal::{self, Num, Str}, OpCode, Function, Callable, LocalVarRef, ClassInstance};
+use crate::arena::{Arena, Ref};
+use crate::chunk::{Class,  new_class_instance, OwnedLoxVal};
+use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, Callable, LocalVarRef, ClassInstance, Closure};
+use crate::compiler::CompilationResult;
 
 pub struct VM {
     stack: Vec<LocalVar>,
@@ -10,9 +11,10 @@ pub struct VM {
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
     ref_resolver: Vec<RefStatus>,
+    functions: Arena<Closure>,
+    strings: Arena<String>,
     classes: Arena<Class>,
     instances: Arena<ClassInstance>,
-    methods: Arena<BoundMethod>,
 }
 
 struct LocalVar {
@@ -33,7 +35,7 @@ impl From<LoxVal> for LocalVar {
 
 struct CallFrame {
     /// Index of the function in the VM functions field.
-    function: Function,
+    function: Ref<Closure>,
     ip: usize,
     /// Index of the stack where the frame starts
     /// when calling a function, the value of the function being called is
@@ -41,19 +43,20 @@ struct CallFrame {
     offset: usize,
 }
 
-impl From<Function> for VM {
-    fn from(main: Function) -> Self {
+impl From<CompilationResult> for VM {
+    fn from(main: CompilationResult) -> Self {
         VM {
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: main, ip: 0, offset: 0 }
+                CallFrame { function: main.executable[0], ip: 0, offset: 0 }
             ],
             ref_resolver: Vec::new(),
+            functions: main.functions,
+            strings: main.strings,
             classes: Arena::new(),
             instances: Arena::new(),
-            methods: Arena::new(),
         }
     }
 }
@@ -95,7 +98,7 @@ impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
         let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
         let ip = self.get_current_frame()?.ip;
-        Ok(current_fn.chunk.0.get(ip).cloned())
+        Ok(self.functions.get(current_fn).chunk.0.get(ip).cloned())
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
@@ -148,7 +151,9 @@ impl VM {
 
     /// Reads every instruction of a function, to modify accesses to
     /// closed-over variables, into a Get/SetUpval instruction.
-    fn resolve_closure(&mut self, closure: &mut Function) {
+    fn resolve_closure(&mut self, closure_ref: Ref<Closure>) {
+        /*
+        let mut closure = self.functions.get(closure_ref);
         let current_frame = self.call_frames.len();
         for instr in closure.chunk.0.iter_mut() {
             match &mut instr.op {
@@ -161,12 +166,14 @@ impl VM {
                     instr.op = OpCode::SetUpval(upval_idx);
                 }
                 OpCode::Closure(f) => {
-                    self.resolve_closure(f);
+                    self.resolve_closure(*f);
                     instr.op = OpCode::Closure(f.clone());
                 }
                 _ => continue,
             }
         }
+        */
+        todo!()
     }
 
     /// Registers a new UpVal.
@@ -203,10 +210,9 @@ impl VM {
         let last_arg_idx = self.stack.len() - 1;
         let fn_idx = last_arg_idx - n_args as usize;
         match self.stack.get(fn_idx).map(|x| x.val.clone()) {
-            Some(LoxVal::Function(f)) => Ok(Callable::Function(f.clone())),
-            Some(LoxVal::NativeFunction(f)) => Ok(Callable::NativeFunction(f)),
+            Some(LoxVal::Closure(f)) => Ok(Callable::Closure(f)),
+            Some(LoxVal::NativeFn(f)) => Ok(Callable::NativeFn(f)),
             Some(LoxVal::Class(cls)) => Ok(Callable::Class(cls)),
-            Some(LoxVal::BoundMethod(m)) => Ok(Callable::Method(m)),
             Some(other) => Err(VMError::TypeError {
                 line: 0,
                 expected: "callable".to_string(),
@@ -220,12 +226,17 @@ impl VM {
         }
     }
 
-    pub fn interpret(&mut self) -> Result<LoxVal, VMError> {
+    pub fn interpret(&mut self) -> Result<OwnedLoxVal, VMError> {
         while let Some(instr) = self.get_current_instr()? {
             match instr.op {
                 OpCode::Add => match (self.pop_val()?, self.pop_val()?) {
                     (Num(r), Num(l)) => self.push_val(Num(l+r)),
-                    (Str(r), Str(l)) => self.push_val(Str(l + &r)),
+                    (Str(r), Str(l)) => {
+                        let mut res = self.strings.get(l).clone();
+                        res.push_str(self.strings.get(r));
+                        let res_ref = self.strings.insert(res);
+                        self.push_val(Str(res_ref));
+                    }
                     (Num(_), other)  => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
@@ -249,7 +260,8 @@ impl VM {
                 OpCode::Call(n_args) => {
                     let mut frame_added = false;
                     match self.get_called_fn(n_args)? {
-                        Callable::Function(f) => {
+                        Callable::Closure(fn_ref) => {
+                            let f = self.functions.get(fn_ref);
                             frame_added = true;
                             if f.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
@@ -259,7 +271,7 @@ impl VM {
                                 });
                             }
                             self.call_frames.push(CallFrame {
-                                function: f.clone(),
+                                function: fn_ref,
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
                             });
@@ -271,14 +283,15 @@ impl VM {
                                 Some(s) => LoxVal::Class(s),
                                 None => LoxVal::Nil,
                             };
-                            let inst_ref = self.instances.insert(class.new_instance());
+                            let inst_ref = self.instances.insert(new_class_instance(cls));
                             if let Some(init) = self.classes.get(cls).methods.get("init") {
+                                let init_fn = self.functions.get(*init);
                                 init_called = true;
                                 frame_added = true;
                                 self.call_frames.push(CallFrame {
-                                    function: init.clone(),
+                                    function: *init,
                                     ip: 0,
-                                    offset: self.stack.len() - init.arity as usize,
+                                    offset: self.stack.len() - init_fn.arity as usize,
                                 });
                             } else {
                                 self.pop_val()?;
@@ -288,9 +301,10 @@ impl VM {
                                 self.push_val(sup);
                             }
                         },
-                        Callable::NativeFunction(f) => {
+                        Callable::NativeFn(f) => {
                             self.apply_native(f, n_args)?;
                         },
+                        /*
                         Callable::Method(m) => {
                             frame_added = true;
                             let method = self.methods.get(m);
@@ -306,13 +320,14 @@ impl VM {
                                 });
                             }
                             self.call_frames.push(CallFrame {
-                                function: method.method.clone(),
+                                function: m,
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
                             });
                             self.push_val(LoxVal::Instance(method.this));
                             self.push_val(sup);
                         },
+                        */
                     };
                     let prev_fn_idx = if frame_added {
                         self.call_frames.len() - 2
@@ -336,21 +351,21 @@ impl VM {
                     self.push_val(LoxVal::Class(class_ref));
                 }
 
-                OpCode::Closure(mut f) => {
-                    self.resolve_closure(&mut f);
-                    self.push_val(LoxVal::Function(f));
+                OpCode::Closure(f) => {
+                    self.resolve_closure(f);
+                    self.push_val(LoxVal::Closure(f));
                 }
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
-                OpCode::DefineClass(ref name) => {
+                OpCode::DefineClass(name) => {
                     let val = self.peek(0)?.clone();
-                    self.globals.insert(name.clone(), val);
+                    self.globals.insert(self.strings.get(name).clone(), val);
                 },
 
-                OpCode::DefineGlobal(ref name) => {
+                OpCode::DefineGlobal(name) => {
                     let val = self.pop_val()?.clone();
-                    self.globals.insert(name.clone(), val);
+                    self.globals.insert(self.strings.get(name).clone(), val);
                 },
 
                 OpCode::Divide => match (self.pop_val()?, self.pop_val()?) {
@@ -375,13 +390,20 @@ impl VM {
                     self.push_val(LoxVal::Bool(lhs == rhs));
                 },
 
+                OpCode::NotEqual => {
+                    let lhs = self.pop_val()?;
+                    let rhs = self.pop_val()?;
+                    self.push_val(LoxVal::Bool(!(lhs == rhs)));
+                },
+
                 OpCode::GetGlobal(var) => {
-                    match self.globals.get(var.as_str()) {
+                    let var_str = self.strings.get(var);
+                    match self.globals.get(var_str) {
                         Some(val) => self.push_val(val.clone()),
-                        None => match get_native(&var) {
-                            Some(f) => self.push_val(LoxVal::NativeFunction(f)),
+                        None => match get_native(var_str) {
+                            Some(f) => self.push_val(LoxVal::NativeFn(f)),
                             None => return Err(VMError::UndefinedVariable {
-                                name: var.clone(),
+                                name: var_str.clone(),
                                 line: instr.line,
                             })
                         },
@@ -418,23 +440,25 @@ impl VM {
                             "Error getting this".to_string(),
                         )),
                     };
-                    match supercls.methods.get(&name) {
+                    let meth_name = self.strings.get(name);
+                    match supercls.methods.get(meth_name) {
                         Some(f) => {
-                            let method = BoundMethod {
-                                this: *this,
-                                method: f.clone(),
+                            let f_closure = self.functions.get(*f).clone();
+                            let method = Closure {
+                                this: Some(*this),
                                 sup: supercls.sup,
+                                ..f_closure
                             };
-                            let meth_ref = self.methods.insert(method);
-                            self.push_val(LoxVal::BoundMethod(meth_ref));
+                            let meth_ref = self.functions.insert(method);
+                            self.push_val(LoxVal::Closure(meth_ref));
                         }
                         None => return Err(VMError::UndefinedProperty {
-                            prop_name: name
+                            prop_name: meth_name.clone(),
                         }),
                     }
                 }
 
-                OpCode::GetProperty(prop_name) => {
+                OpCode::GetProperty(prop_name_ref) => {
                     let inst_ref = match self.peek(0)? {
                         LoxVal::Instance(r) => r.clone(),
                         other => return Err(VMError::TypeError {
@@ -446,21 +470,26 @@ impl VM {
                     };
                     self.pop_var();
                     let inst = self.instances.get(inst_ref);
-                    match inst.fields.get(&prop_name) {
+                    let cls = self.classes.get(inst.class);
+                    let prop_name = self.strings.get(prop_name_ref);
+                    match inst.fields.get(prop_name) {
                         Some(val) => {
                             self.push_val(val.clone());
                         }
-                        None => match inst.class.methods.get(&prop_name) {
-                            Some(val) => {
-                                let method = BoundMethod {
-                                    this: inst_ref,
-                                    method: val.clone(),
-                                    sup: inst.class.sup,
+                        None => match cls.methods.get(prop_name) {
+                            Some(f) => {
+                                let f_closure = self.functions.get(*f).clone();
+                                let method = Closure {
+                                    this: Some(inst_ref),
+                                    sup: cls.sup,
+                                    ..f_closure
                                 };
-                                let meth_ref = self.methods.insert(method);
-                                self.push_val(LoxVal::BoundMethod(meth_ref));
+                                let meth_ref = self.functions.insert(method);
+                                self.push_val(LoxVal::Closure(meth_ref));
                             },
-                            None => return Err(VMError::UndefinedProperty { prop_name }),
+                            None => return Err(VMError::UndefinedProperty {
+                                prop_name: prop_name.clone()
+                            }),
                         }
                     };
                 }
@@ -469,7 +498,7 @@ impl VM {
                     self.push_val(self.read_upval(upval_idx))
                 }
 
-                OpCode::Greater => match (self.pop_val()?, self.pop_val()?) {
+                OpCode::GT => match (self.pop_val()?, self.pop_val()?) {
                     (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l>r)),
                     (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
@@ -484,6 +513,23 @@ impl VM {
                         details: "on the right side of the > operator".to_string(),
                     }),
                 },
+
+                OpCode::GE => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l >= r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the left side of the >= operator".to_string(),
+                    }),
+                    (other, _) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the right side of the >= operator".to_string(),
+                    }),
+                },
+
 
                 // stack: |  super  |  <--- top
                 //        |   sub   |
@@ -524,8 +570,8 @@ impl VM {
                     }
                 },
 
-                OpCode::Less => match (self.pop_val()?, self.pop_val()?) {
-                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l<r)),
+                OpCode::LT => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l < r)),
                     (Num(_), other) => return Err(VMError::TypeError {
                         line: instr.line,
                         expected: "number".to_string(),
@@ -540,9 +586,26 @@ impl VM {
                     }),
                 },
 
-                OpCode::Method(name) => {
+                OpCode::LE => match (self.pop_val()?, self.pop_val()?) {
+                    (Num(r), Num(l)) => self.push_val(LoxVal::Bool(l <= r)),
+                    (Num(_), other) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the left side of the <= operator".to_string(),
+                    }),
+                    (other, _) => return Err(VMError::TypeError {
+                        line: instr.line,
+                        expected: "number".to_string(),
+                        got: other.type_name(),
+                        details: "on the right side of the <= operator".to_string(),
+                    }),
+                },
+
+                OpCode::Method(name_ref) => {
+                    let name = self.strings.get(name_ref).clone();
                     let meth = match self.pop_val()? {
-                        LoxVal::Function(f) => f.clone(),
+                        LoxVal::Closure(f) => f.clone(),
                         other => return Err(VMError::Bug(
                             format!("non-function: {other:?} was on stack in method position during methods declarations"),
                         )),
@@ -590,14 +653,15 @@ impl VM {
 
                 OpCode::Pop => self.pop_var(),
 
-                OpCode::Print => println!("{}", self.pop_val()?),
+                OpCode::Print => println!("{:?}", self.pop_val()?),
 
-                OpCode::SetGlobal(ref var) => {
-                    match self.globals.insert(var.clone(), self.peek(0)?.clone()) {
+                OpCode::SetGlobal(name_ref) => {
+                    let name = self.strings.get(name_ref).clone();
+                    match self.globals.insert(name.clone(), self.peek(0)?.clone()) {
                         Some(_) => (),
                         None => return Err(VMError::UndefinedVariable {
                             line: 0,
-                            name: var.clone(),
+                            name,
                         }),
                     }
                 }
@@ -607,7 +671,7 @@ impl VM {
                     self.set_local(&var_ref, val.clone())?;
                 }
 
-                OpCode::SetProperty(prop_name) => {
+                OpCode::SetProperty(prop_name_ref) => {
                     let inst = match self.peek(1)? {
                         LoxVal::Instance(v) => v.clone(),
                         other => return Err(VMError::TypeError {
@@ -619,7 +683,8 @@ impl VM {
                     };
                     let val = self.pop_val()?;
                     self.pop_val()?;
-                    self.instances.get_mut(inst).fields.insert(prop_name, val.clone());
+                    let prop_name = self.strings.get(prop_name_ref);
+                    self.instances.get_mut(inst).fields.insert(prop_name.clone(), val.clone());
                     self.push_val(val);
                 }
 
@@ -644,7 +709,25 @@ impl VM {
 
                 OpCode::Return => {
                     if self.call_frames.len() == 1 {
-                        return Ok(self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone()));
+                        let last =self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone());
+                        return Ok(match last {
+                            Bool(b) => OwnedLoxVal::Bool(b),
+                            Nil => OwnedLoxVal::Nil,
+                            Num(n) => OwnedLoxVal::Num(n),
+                            Str(s) => OwnedLoxVal::Str(
+                                self.strings.get(s).clone()
+                            ),
+                            LoxVal::Closure(c) => OwnedLoxVal::Closure(
+                                self.functions.get(c).clone(),
+                            ),
+                            NativeFn(f) => OwnedLoxVal::NativeFn(f),
+                            LoxVal::Class(c) => OwnedLoxVal::Class(
+                                self.classes.get(c).clone()
+                            ),
+                            Instance(i) => OwnedLoxVal::Instance(
+                                self.instances.get(i).clone()
+                            ),
+                        });
                     }
                     let result = self.pop_val().unwrap();
                     let old_frame = self.call_frames.pop().unwrap();

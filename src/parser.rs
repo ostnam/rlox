@@ -161,8 +161,8 @@ impl Parser {
         }
     }
 
-    /// Only parses an expression: used for tests.
-    pub fn parse_expr(mut self) -> Option<Expr> {
+    /// Parses a single expression. Only used for unit-tests.
+    fn _parse_expr(mut self) -> Option<Expr> {
         self.advance();
         let expr = self.expression()?;
         self.end_parsing();
@@ -599,7 +599,7 @@ impl Parser {
 mod tests {
     use super::*;
     fn run_parser_expr(program: &str) -> Expr {
-        Parser::new(program).unwrap().parse_expr().unwrap()
+        Parser::new(program).unwrap()._parse_expr().unwrap()
     }
 
     fn run_parser(program: &str) -> Option<Vec<Declaration>> {
