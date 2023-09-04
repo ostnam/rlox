@@ -75,17 +75,17 @@ impl Compiler {
     fn optimize_ast(&mut self) {
     }
 
+    /// Returns a `&mut` to the function currently being compiled.
+    fn get_current_fn_mut(&mut self) -> &mut Closure {
+        self.closures.get_mut(self.current_closure)
+    }
+
     /// Writes an `Instruction` corresponding to the given `OpCode` at
     /// the end of the current function.
     fn emit_instr(&mut self, op: OpCode) {
-        let current_fn_ref = self.executable.get(self.current_function)
-            .unwrap_or_else(|| panic!(
-                "BUG: getting current function in emit_instr: current function idx is {} but len of functions is {}",
-                self.current_function,
-                self.executable.len()
-        ));
-        let compiled_fn = self.closures.get_mut(*current_fn_ref);
-        compiled_fn.chunk.0.push(Instruction { op, line: self.current_line });
+        let line = self.current_line;
+        self.get_current_fn_mut()
+            .chunk.push(Instruction { op, line });
     }
 
     /// Registers a new local in the current scope.
@@ -177,7 +177,7 @@ impl Compiler {
                 self.compile_expr(rhs);
                 self.emit_instr(op.as_opcode());
             },
-            Expr::Assignment { tgt, val } => todo!(),
+            Expr::Assignment { tgt, val } => self.compile_assignment(tgt, val),
             Expr::Primary(Primary::Bool(b)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Bool(*b))),
             Expr::Primary(Primary::Nil) =>
@@ -192,6 +192,42 @@ impl Compiler {
             Expr::Or(_, _) => todo!(),
             Expr::Dot(_, _) => todo!(),
         }
+    }
+
+    /// Compiles Expr::Assignment
+    fn compile_assignment(&mut self, tgt: &Expr, val: &Expr) {
+        match tgt {
+            Expr::Primary(Primary::Name(n)) => {
+                self.compile_expr(val);
+                match self.resolve_local(*n) {
+                    Some(local_var_ref) if local_var_ref.is_closed_over(self.current_scope_depth) => {
+                        self.register_upval(local_var_ref);
+                        self.emit_instr(OpCode::SetUpval(0));
+                    },
+                    Some(local_var_ref) => self.emit_instr(OpCode::SetLocal(local_var_ref)),
+                    None => self.emit_instr(OpCode::SetGlobal(*n)),
+                }
+            },
+            Expr::Dot(_, _) => todo!(),
+            Expr::Primary(_)
+            | Expr::Assignment { .. }
+            | Expr::Unop { .. }
+            | Expr::Binop { .. }
+            | Expr::Call { .. }
+            | Expr::And(_, _)
+            | Expr::Or(_, _) => self.emit_err("invalid assignment target"),
+        }
+    }
+
+    /// Adds the index of the next instruction in the body of the current
+    /// function. As a result, a `{Get,Set}Upval` instr should be emitted next.
+    fn register_upval(&mut self, upval_tgt: LocalVarRef) {
+        let current_fn = self.get_current_fn_mut();
+        current_fn.upval_idx.push(current_fn.chunk.len());
+    }
+
+    fn resolve_local(&mut self, name: Ref<String>) -> Option<LocalVarRef> {
+        None
     }
 
     /// Compiles the instructions to read the variable
