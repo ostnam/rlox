@@ -1,6 +1,6 @@
 use crate::arena::{Ref, Arena};
 use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary};
-use crate::chunk::{Closure, FnType, OpCode, Chunk, Instruction, LoxVal};
+use crate::chunk::{Closure, FnType, OpCode, Chunk, Instruction, LoxVal, LocalVarRef};
 use crate::parser::Parse;
 use crate::refs_eql;
 
@@ -13,8 +13,8 @@ pub struct Compiler {
     // for resolving variables
     locals: Vec<Vec<Local>>,
     current_scope_depth: usize,
-    current_function: usize,
-    current_function_type: FnType,
+    current_closure: Ref<Closure>,
+    current_closure_type: FnType,
 
     executable: Vec<Ref<Closure>>,
     current_line: u64,
@@ -34,32 +34,35 @@ pub struct CompilationResult {
 }
 
 impl Compiler {
-    pub fn compile(input: Parse) -> Option<CompilationResult> {
-        let compiler = Self {
-            functions: input.functions,
-            strings: input.strings,
-            closures: Arena::new(),
-            locals: Vec::new(),
-            current_scope_depth: 0,
-            current_function: 0,
-            current_function_type: FnType::Main,
-            executable: Vec::new(),
-            current_line: 0,
-        };
-        compiler.run_compilation(input.program)
-    }
-
-    fn run_compilation(mut self, ast: Vec<Declaration>) -> Option<CompilationResult> {
-        let name = self.strings.insert("main".to_string());
+    pub fn compile(mut input: Parse) -> Option<CompilationResult> {
+        let mut closures = Arena::new();
+        let name = input.strings.insert("main".to_string());
         let main = Closure {
             arity: 0,
             chunk: Chunk::default(),
             name,
             sup: None,
             this: None,
+            upval_idx: Vec::new(),
+            child_closures: Vec::new(),
         };
-        let main_ref = self.closures.insert(main);
-        self.executable.push(main_ref);
+        let main_ref = closures.insert(main);
+        let mut compiler = Self {
+            functions: input.functions,
+            strings: input.strings,
+            closures,
+            locals: Vec::new(),
+            current_scope_depth: 0,
+            current_closure: main_ref,
+            current_closure_type: FnType::Main,
+            executable: Vec::new(),
+            current_line: 0,
+        };
+        compiler.executable.push(main_ref);
+        compiler.run_compilation(input.program)
+    }
+
+    fn run_compilation(mut self, ast: Vec<Declaration>) -> Option<CompilationResult> {
         self.optimize_ast();
         self.pass(ast).unwrap();
         Some(CompilationResult {
