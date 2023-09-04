@@ -38,10 +38,18 @@ pub struct Closure {
     pub arity: u8,
     pub chunk: Chunk,
     pub name: Ref<String>,
+
     /// `None` unless it's a method.
     pub this: Option<Ref<ClassInstance>>,
+
     /// `None` unless it's a method from a class with a superclass.
     pub sup: Option<Ref<Class>>,
+
+    /// idx of every instruction that closes over a local variable
+    pub upval_idx: Vec<usize>,
+
+    /// Stores the index of every `Closure` defined in the body of this one.
+    pub child_closures: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
