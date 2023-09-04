@@ -98,7 +98,7 @@ impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
         let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
         let ip = self.get_current_frame()?.ip;
-        Ok(self.functions.get(current_fn).chunk.0.get(ip).cloned())
+        Ok(self.functions.get(current_fn).chunk.get(ip).cloned())
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {

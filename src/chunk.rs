@@ -148,14 +148,21 @@ pub struct LocalVarRef {
     pub pos: usize,
 }
 
+impl LocalVarRef {
+    /// Returns whether `Self` is closed over: ie it is not from the
+    /// stack frame currently at the top.
+    pub fn is_closed_over(&self, current_frame: usize) -> bool {
+        self.frame < current_frame
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     pub op: OpCode,
     pub line: u64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Chunk (pub Vec<Instruction>);
+pub type Chunk =  Vec<Instruction>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FnType {
