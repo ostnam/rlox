@@ -1,5 +1,5 @@
 use crate::arena::{Ref, Arena};
-use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary};
+use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary, ForInit, VarDecl};
 use crate::chunk::{Closure, FnType, OpCode, Chunk, Instruction, LoxVal, LocalVarRef};
 use crate::parser::Parse;
 use crate::refs_eql;
@@ -25,6 +25,39 @@ struct Local {
     name: Ref<String>,
     depth: usize,
     initialized: bool,
+}
+
+/// Wrapper type that represents the target of a jump instruction.
+/// The `tgt` field is the index of the instruction in the `Chunk`,
+/// so it can be used as the value stored in the OpCode.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct JumpTgt {
+    tgt: usize,
+}
+
+/// Useful when we add a jump that we'll patch later.
+impl Default for JumpTgt {
+    fn default() -> Self {
+        Self { tgt: 0 }
+    }
+}
+
+/// Reference to a jump instruction in the current function chunk.
+/// `idx` is the direct index in the `Chunk`.
+/// Obviously, changing the current function makes all `JumpRef` invalid.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct JumpRef {
+    idx: usize,
+}
+
+/// Every possible jump type, directly matches to an `OpCode`.
+#[derive(Clone, Copy)]
+enum JumpKind {
+    Inconditional,
+    IfTrue,
+    IfFalse,
 }
 
 pub struct CompilationResult {
@@ -76,7 +109,7 @@ impl Compiler {
     }
 
     /// Returns a reference to the function currently being compiled.
-    fn get_current_fn(&mut self) -> &Closure {
+    fn get_current_fn(&self) -> &Closure {
         self.closures.get(self.current_closure)
     }
 
@@ -146,29 +179,73 @@ impl Compiler {
                         self.read_variable(sup_name_ref);
                         self.emit_instr(OpCode::Inherit);
                     }
-
                     for method in methods {
                         self.compile_method(method);
                     }
-
                     if self.current_scope_depth == 0 {
                         self.emit_instr(OpCode::Pop);
                     }
-
                 },
                 Declaration::Fun(_) => todo!(),
-                Declaration::Stmt(Stmt::Expr(expr)) => {
-                    self.compile_expr(&expr);
-                    self.emit_instr(OpCode::Pop);
-                },
-                Declaration::Stmt(_) => {
-                    todo!()
-                },
+                Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
                 Declaration::Var(_) => todo!(),
             }
         }
         self.emit_instr(OpCode::Return);
         Ok(())
+    }
+
+    fn compile_var_decl(&mut self, var_decl: &VarDecl) {
+        todo!()
+    }
+
+    fn compile_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Expr(expr) => {
+                self.compile_expr(&expr);
+                self.emit_instr(OpCode::Pop);
+            },
+            Stmt::For { init, cond, update, body } =>  {
+                self.begin_scope();
+                match init {
+                    Some(ForInit::Decl(var_decl)) =>
+                        self.compile_var_decl(&var_decl),
+                    Some(ForInit::Expr(expr)) =>
+                        self.compile_expr(&expr),
+                    None => (),
+                };
+                let mut end_jmp = None;
+                let before_cond = self.get_jump_tgt();
+                if let Some(expr) = cond {
+                    self.compile_expr(&expr);
+                    end_jmp = Some(
+                        self.emit_jump(JumpKind::IfFalse, JumpTgt::default())
+                    );
+                }
+                self.compile_stmt(body);
+                if let Some(expr) = update {
+                    self.compile_expr(expr);
+                    self.emit_jump(JumpKind::Inconditional, before_cond);
+                }
+                if let Some(jmp) = end_jmp {
+                    self.set_jump_tgt(jmp);
+                }
+                self.end_scope();
+            },
+            Stmt::If { cond, body, else_cond } => (),
+            Stmt::Print(expr) => {
+                todo!()
+            },
+            Stmt::Return(expr) => {
+                todo!()
+            },
+            Stmt::While { cond, body } => {
+                todo!()
+            },
+            Stmt::Block(block) => {
+                todo!()
+            },
+        }
     }
 
     fn compile_expr(&mut self, expr: &Expr) {
@@ -233,6 +310,57 @@ impl Compiler {
 
     fn resolve_local(&mut self, name: Ref<String>) -> Option<LocalVarRef> {
         None
+    }
+
+    /// Returns a `JumpTgt` that corresponds to the next instruction.
+    fn get_jump_tgt(&self) -> JumpTgt {
+        JumpTgt { tgt: self.get_next_instr_idx() }
+    }
+
+    /// Emits an instruction corresponding to a jump to the specified target.
+    fn emit_jump(&mut self, kind: JumpKind, tgt: JumpTgt) -> JumpRef {
+        let res = JumpRef {
+            idx: self.get_next_instr_idx()
+        };
+        match kind {
+            JumpKind::Inconditional => self.emit_instr(OpCode::Jump(tgt.tgt)),
+            JumpKind::IfTrue => self.emit_instr(OpCode::JumpIfTrue(tgt.tgt)),
+            JumpKind::IfFalse => self.emit_instr(OpCode::JumpIfFalse(tgt.tgt)),
+        }
+        res
+    }
+
+    /// Updates the target of the passed-in jump to point to the next
+    /// instruction.
+    fn set_jump_tgt(&mut self, jmp: JumpRef) {
+        let tgt = self.get_next_instr_idx();
+        let current_fn = self.get_current_fn_mut();
+        match current_fn.chunk.get_mut(jmp.idx) {
+            Some(x@Instruction { op: OpCode::Jump(_), .. }) => {
+                x.op = OpCode::Jump(tgt);
+            },
+            Some(x@Instruction { op: OpCode::JumpIfTrue(_), .. }) => {
+                x.op = OpCode::JumpIfTrue(tgt);
+            },
+            Some(x@Instruction { op: OpCode::JumpIfFalse(_), .. }) => {
+                x.op = OpCode::JumpIfFalse(tgt);
+            },
+            _ => self.emit_err("BUG: incorrect jump retargeting"),
+        }
+    }
+
+    /// Returns the index of the next instruction to be compiled.
+    fn get_next_instr_idx(&self) -> usize {
+        self.get_current_fn().chunk.len()
+    }
+
+    fn begin_scope(&mut self) {
+        self.current_scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.current_scope_depth -= 1;
+        todo!()
     }
 
     /// Compiles the instructions to read the variable
