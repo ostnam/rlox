@@ -75,6 +75,11 @@ impl Compiler {
     fn optimize_ast(&mut self) {
     }
 
+    /// Returns a reference to the function currently being compiled.
+    fn get_current_fn(&mut self) -> &Closure {
+        self.closures.get(self.current_closure)
+    }
+
     /// Returns a `&mut` to the function currently being compiled.
     fn get_current_fn_mut(&mut self) -> &mut Closure {
         self.closures.get_mut(self.current_closure)
