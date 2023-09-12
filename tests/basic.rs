@@ -257,7 +257,6 @@ fn test_cmp() {
     );
 }
 
-/*
 #[test]
 fn test_print_stmt() {
     assert_eq!(
@@ -271,6 +270,7 @@ fn test_print_stmt() {
     );
 }
 
+/*
 #[test]
 fn test_global_var() {
     assert_eq!(

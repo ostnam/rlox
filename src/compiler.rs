@@ -234,7 +234,9 @@ impl Compiler {
             },
             Stmt::If { cond, body, else_cond } => (),
             Stmt::Print(expr) => {
-                todo!()
+                self.compile_expr(&expr);
+                self.emit_instr(OpCode::Print);
+                // The VM pops the value that is printed.
             },
             Stmt::Return(expr) => {
                 todo!()
