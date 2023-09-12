@@ -187,18 +187,30 @@ impl Compiler {
                 for method in methods {
                     self.compile_method(*method);
                 }
-                if self.current_scope_depth == 0 {
+                if self.current_scope_depth() == 0 {
                     self.emit_instr(OpCode::Pop);
                 }
             },
             Declaration::Fun(_) => todo!(),
             Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
-            Declaration::Var(_) => todo!(),
+            Declaration::Var(var_decl) => self.compile_var_decl(var_decl),
         }
     }
 
     fn compile_var_decl(&mut self, var_decl: &VarDecl) {
-        todo!()
+        if self.current_scope_depth() > 0 {
+            self.declare_local(var_decl.name);
+        }
+        if let Some(expr) = &var_decl.val {
+            self.compile_expr(expr);
+        } else {
+            self.emit_instr(OpCode::Constant(LoxVal::Nil));
+        }
+        if self.current_scope_depth() > 0 {
+            self.init_last_local();
+        } else {
+            self.emit_instr(OpCode::DefineGlobal(var_decl.name));
+        }
     }
 
     fn compile_stmt(&mut self, stmt: &Stmt) {
@@ -302,6 +314,7 @@ impl Compiler {
                 self.emit_instr(OpCode::Constant(LoxVal::Num(*n))),
             Expr::Primary(Primary::Str(s)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Str(*s))),
+            Expr::Primary(Primary::Name(name)) => self.compile_read_var(*name),
             _ => todo!(),
             Expr::Call { lhs, args } => todo!(),
             Expr::And(_, _) => todo!(),
@@ -332,6 +345,13 @@ impl Compiler {
             | Expr::Call { .. }
             | Expr::And(_, _)
             | Expr::Or(_, _) => self.emit_err("invalid assignment target"),
+        }
+    }
+
+    fn compile_read_var(&mut self, name: Ref<String>) {
+        match self.resolve_local(name) {
+            Some(_) => todo!(),
+            None => self.emit_instr(OpCode::GetGlobal(name)),
         }
     }
 

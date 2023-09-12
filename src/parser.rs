@@ -45,7 +45,6 @@ impl From<&Token> for PrecedenceLvl {
             | Token::Comma { .. }
             | Token::Semicolon { .. }
             | Token::Bang { .. }
-            | Token::Eql { .. }
             | Token::Identifier { .. }
             | Token::NumLit { .. }
             | Token::StrLit { .. }
@@ -63,6 +62,8 @@ impl From<&Token> for PrecedenceLvl {
             | Token::True { .. }
             | Token::Var { .. }
             | Token::While { .. } => PrecedenceLvl::Null,
+
+            Token::Eql { .. } => PrecedenceLvl::Assignment,
 
             Token::Or { .. } => PrecedenceLvl::Or,
             Token::And { .. } => PrecedenceLvl::And,
@@ -531,6 +532,11 @@ impl Parser {
         Some(Expr::Binop { op, lhs: Box::new(lhs), rhs: Box::new(rhs), })
     }
 
+    fn assignment(&mut self, lhs: Expr) -> Option<Expr> {
+        let rhs = self.parse_precedence(PrecedenceLvl::Assignment)?;
+        Some(Expr::Assignment { tgt: Box::new(lhs), val: Box::new(rhs), })
+    }
+
     fn and(&mut self, lhs: Expr) -> Option<Expr> {
         let rhs = self.parse_precedence(PrecedenceLvl::And)?;
         Some(Expr::And(Box::new(lhs), Box::new(rhs)))
@@ -579,6 +585,7 @@ impl Parser {
             Token::And { .. } => self.and(lhs),
             Token::BangEql { .. } => self.binary(lhs, BinaryOperator::NotEql),
             Token::Dot { .. } => self.dot(lhs),
+            Token::Eql { .. } => self.assignment(lhs),
             Token::EqlEql { .. } => self.binary(lhs, BinaryOperator::Eql),
             Token::Greater { .. } => self.binary(lhs, BinaryOperator::GT),
             Token::GreaterEql { .. } => self.binary(lhs, BinaryOperator::GE),
@@ -597,7 +604,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches::assert_matches;
+
     use super::*;
+
     fn run_parser_expr(program: &str) -> Expr {
         Parser::new(program).unwrap()._parse_expr().unwrap()
     }
@@ -825,6 +835,22 @@ mod tests {
                     ])),
                     else_cond: None,
                 })
+            ],
+        );
+    }
+
+    #[test]
+   fn parse_assignment() {
+        assert_matches!(
+            run_parser("true = false = nil;").unwrap()[..],
+            [
+                Declaration::Stmt(Stmt::Expr(Expr::Assignment {
+                    tgt: box Expr::Primary(Primary::Bool(true)),
+                    val: box Expr::Assignment {
+                        tgt: box Expr::Primary(Primary::Bool(false)),
+                        val: box Expr::Primary(Primary::Nil),
+                    }
+                }))
             ],
         );
     }

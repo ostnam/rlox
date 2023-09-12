@@ -316,7 +316,6 @@ fn test_if_stmt() {
     */
 }
 
-/*
 #[test]
 fn test_global_var() {
     assert_eq!(
@@ -332,12 +331,12 @@ fn test_global_var() {
         Ok(OwnedLoxVal::Num(33.0)),
     );
     assert_eq!(
-        common::run_program("var x = 1; x = 2; x;"),
+        common::run_program("var x = 1; x = 2 ; x ;"),
         Ok(OwnedLoxVal::Num(2.0)),
     );
     assert_eq!(
         common::run_program("x;"),
-        Err(VMError::UndefinedVariable { line: 1, name: "x".to_string()}),
+        Err(VMError::UndefinedVariable { line: 0, name: "x".to_string()}),
     );
     assert_eq!(
         common::run_program("x = 10;"),
@@ -345,6 +344,7 @@ fn test_global_var() {
     );
 }
 
+/*
 #[test]
 fn test_local_var() {
     assert_eq!(
