@@ -161,38 +161,41 @@ impl Compiler {
 
     /// The main compilation pass.
     fn pass(&mut self, nodes: Vec<Declaration>) -> Result<(), ()> {
-        for node in nodes {
-            match node {
-                Declaration::Class { name, super_name, methods } => {
-                    self.emit_instr(OpCode::Class(name));
-                    if self.current_scope_depth > 0 {
-                        self.declare_local(name);
-                        self.init_last_local();
-                    } else {
-                        self.emit_instr(OpCode::DefineClass(name));
-                    }
-                    if let Some(sup_name_ref) = super_name {
-                        if refs_eql!(self.strings, sup_name_ref, name) {
-                            self.emit_err("class can't inherit from itself");
-                            return Err(());
-                        }
-                        self.read_variable(sup_name_ref);
-                        self.emit_instr(OpCode::Inherit);
-                    }
-                    for method in methods {
-                        self.compile_method(method);
-                    }
-                    if self.current_scope_depth == 0 {
-                        self.emit_instr(OpCode::Pop);
-                    }
-                },
-                Declaration::Fun(_) => todo!(),
-                Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
-                Declaration::Var(_) => todo!(),
-            }
+        for node in &nodes {
+            self.compile_decl(node);
         }
         self.emit_instr(OpCode::Return);
         Ok(())
+    }
+
+    fn compile_decl(&mut self, decl: &Declaration) {
+        match decl {
+            Declaration::Class { name, super_name, methods } => {
+                self.emit_instr(OpCode::Class(*name));
+                if self.current_scope_depth > 0 {
+                    self.declare_local(*name);
+                    self.init_last_local();
+                } else {
+                    self.emit_instr(OpCode::DefineClass(*name));
+                }
+                if let Some(sup_name_ref) = super_name {
+                    if refs_eql!(self.strings, *sup_name_ref, *name) {
+                        self.emit_err("class can't inherit from itself");
+                    }
+                    self.read_variable(*sup_name_ref);
+                    self.emit_instr(OpCode::Inherit);
+                }
+                for method in methods {
+                    self.compile_method(*method);
+                }
+                if self.current_scope_depth == 0 {
+                    self.emit_instr(OpCode::Pop);
+                }
+            },
+            Declaration::Fun(_) => todo!(),
+            Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
+            Declaration::Var(_) => todo!(),
+        }
     }
 
     fn compile_var_decl(&mut self, var_decl: &VarDecl) {
@@ -232,7 +235,19 @@ impl Compiler {
                 }
                 self.end_scope();
             },
-            Stmt::If { cond, body, else_cond } => (),
+            Stmt::If { cond, body, else_cond } => {
+                self.compile_expr(cond);
+                let false_jmp = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
+                self.emit_instr(OpCode::Pop);
+                self.compile_stmt(body);
+                let body_jmp = self.emit_jump(JumpKind::Inconditional, JumpTgt::default());
+                self.set_jump_tgt(false_jmp);
+                self.emit_instr(OpCode::Pop);
+                if let Some(stmt) = else_cond {
+                    self.compile_stmt(stmt);
+                }
+                self.set_jump_tgt(body_jmp);
+            },
             Stmt::Print(expr) => {
                 self.compile_expr(&expr);
                 self.emit_instr(OpCode::Print);
@@ -245,7 +260,11 @@ impl Compiler {
                 todo!()
             },
             Stmt::Block(block) => {
-                todo!()
+                self.begin_scope();
+                for decl in block {
+                    self.compile_decl(decl);
+                }
+                self.end_scope();
             },
         }
     }
@@ -362,7 +381,7 @@ impl Compiler {
 
     fn end_scope(&mut self) {
         self.current_scope_depth -= 1;
-        todo!()
+        // TODO
     }
 
     /// Compiles the instructions to read the variable

@@ -270,6 +270,52 @@ fn test_print_stmt() {
     );
 }
 
+#[test]
+fn test_if_stmt() {
+    assert_eq!(
+        common::run_program(r#"
+            if (1 > 0) {
+                10;
+            }
+        "#),
+        Ok(OwnedLoxVal::Num(10.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            if (1 < 0) {
+                1;
+            } else {
+                2;
+            }
+        "#),
+        Ok(OwnedLoxVal::Num(2.0)),
+    );
+    assert_eq!(
+        common::run_program(r#"
+            if (1 < 0) {
+                1;
+            } else if (false) {
+                2;
+            } else {
+                3;
+            }
+        "#),
+        Ok(OwnedLoxVal::Num(3.0)),
+    );
+    /*
+    assert_eq!(
+        common::run_program(r#"
+            var x = 1;
+            if (true) {
+                var x = 2;
+            }
+            x;
+        "#),
+        Ok(OwnedLoxVal::Num(1.0)),
+    );
+    */
+}
+
 /*
 #[test]
 fn test_global_var() {
@@ -345,50 +391,6 @@ fn test_local_var() {
             x;
         "#),
         Ok(OwnedLoxVal::Num(20.0)),
-    );
-}
-
-#[test]
-fn test_if_stmt() {
-    assert_eq!(
-        common::run_program(r#"
-            if (1 > 0) {
-                10;
-            }
-        "#),
-        Ok(OwnedLoxVal::Num(10.0)),
-    );
-    assert_eq!(
-        common::run_program(r#"
-            if (1 < 0) {
-                1;
-            } else {
-                2;
-            }
-        "#),
-        Ok(OwnedLoxVal::Num(2.0)),
-    );
-    assert_eq!(
-        common::run_program(r#"
-            if (1 < 0) {
-                1;
-            } else if (false) {
-                2;
-            } else {
-                3;
-            }
-        "#),
-        Ok(OwnedLoxVal::Num(3.0)),
-    );
-    assert_eq!(
-        common::run_program(r#"
-            var x = 1;
-            if (true) {
-                var x = 2;
-            }
-            x;
-        "#),
-        Ok(OwnedLoxVal::Num(1.0)),
     );
 }
 
