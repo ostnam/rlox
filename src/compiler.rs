@@ -12,7 +12,6 @@ pub struct Compiler {
 
     // for resolving variables
     locals: Vec<Vec<Local>>,
-    current_scope_depth: usize,
     current_closure: Ref<Closure>,
     current_closure_type: FnType,
 
@@ -85,7 +84,6 @@ impl Compiler {
             strings: input.strings,
             closures,
             locals: Vec::new(),
-            current_scope_depth: 0,
             current_closure: main_ref,
             current_closure_type: FnType::Main,
             executable: Vec::new(),
@@ -129,6 +127,7 @@ impl Compiler {
     /// Registers a new local in the current scope.
     /// If there are no valid scopes currently, does nothing.
     fn declare_local(&mut self, name: Ref<String>) {
+        let depth = self.current_scope_depth();
         self.locals.last_mut().map_or_else(
             || {
                 dbg!("Failed to declare local");
@@ -136,7 +135,7 @@ impl Compiler {
             |frame|
                 frame.push(Local {
                     name,
-                    depth: self.current_scope_depth,
+                    depth,
                     initialized: false,
         }))
     }
@@ -172,7 +171,7 @@ impl Compiler {
         match decl {
             Declaration::Class { name, super_name, methods } => {
                 self.emit_instr(OpCode::Class(*name));
-                if self.current_scope_depth > 0 {
+                if self.current_scope_depth() > 0 {
                     self.declare_local(*name);
                     self.init_last_local();
                 } else {
@@ -317,7 +316,7 @@ impl Compiler {
             Expr::Primary(Primary::Name(n)) => {
                 self.compile_expr(val);
                 match self.resolve_local(*n) {
-                    Some(local_var_ref) if local_var_ref.is_closed_over(self.current_scope_depth) => {
+                    Some(local_var_ref) if local_var_ref.is_closed_over(self.current_scope_depth()) => {
                         self.register_upval(local_var_ref);
                         self.emit_instr(OpCode::SetUpval(0));
                     },
@@ -389,13 +388,14 @@ impl Compiler {
         self.get_current_fn().chunk.len()
     }
 
+    fn current_scope_depth(&self) -> usize {
+        self.locals.len()
+    }
+
     fn begin_scope(&mut self) {
-        self.current_scope_depth += 1;
     }
 
     fn end_scope(&mut self) {
-        self.current_scope_depth -= 1;
-        // TODO
     }
 
     /// Compiles the instructions to read the variable
