@@ -264,7 +264,14 @@ impl Compiler {
                 self.emit_instr(OpCode::Return);
             },
             Stmt::While { cond, body } => {
-                todo!()
+                let loop_start = self.get_jump_tgt();
+                self.compile_expr(cond);
+                let exit_jmp = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
+                self.emit_instr(OpCode::Pop);
+                self.compile_stmt(body);
+                self.emit_jump(JumpKind::Inconditional, loop_start);
+                self.set_jump_tgt(exit_jmp);
+                self.emit_instr(OpCode::Pop);
             },
             Stmt::Block(block) => {
                 self.begin_scope();
