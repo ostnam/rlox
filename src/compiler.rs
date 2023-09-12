@@ -254,7 +254,14 @@ impl Compiler {
                 // The VM pops the value that is printed.
             },
             Stmt::Return(expr) => {
-                todo!()
+                if let FnType::Main | FnType::Ctor = self.current_closure_type {
+                    self.emit_err("can't use return statement in this context");
+                }
+                match expr {
+                    Some(expr) => self.compile_expr(expr),
+                    None => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
+                }
+                self.emit_instr(OpCode::Return);
             },
             Stmt::While { cond, body } => {
                 todo!()
