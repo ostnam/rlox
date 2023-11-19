@@ -63,7 +63,7 @@ impl Resolver {
     }
 
     pub fn resolve_local(&self, str_arena: &Arena<String>, name: Ref<String>) -> Option<StackRef> {
-        for (stack_pos, local) in self.locals.iter().rev().enumerate() {
+        for (stack_pos, local) in self.locals.iter().enumerate().rev() {
             if refs_eql!(str_arena, local.name, name) {
                 let mut closed_over = false;
                 for scope in self.scopes.iter().rev() {
@@ -97,7 +97,9 @@ impl Resolver {
     }
 
     pub fn end_scope(&mut self) -> usize {
-        self.scopes.pop().map_or(0, |scope| scope.length)
+        let length = self.scopes.pop().map_or(0, |scope| scope.length);
+        self.locals.truncate(self.locals.len() - length);
+        length
     }
 
     pub fn begin_fn_scope(&mut self, f: &Function) {
