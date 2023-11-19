@@ -311,7 +311,8 @@ impl Compiler {
             Expr::Primary(Primary::Str(s)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Str(*s))),
             Expr::Primary(Primary::Name(name)) => self.compile_read_var(*name),
-            _ => todo!(),
+            Expr::Primary(Primary::This)
+            | Expr::Primary(Primary::Super) => todo!(),
             Expr::Call { lhs, args } => todo!(),
             Expr::And(_, _) => todo!(),
             Expr::Or(_, _) => todo!(),

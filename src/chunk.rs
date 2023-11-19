@@ -152,6 +152,7 @@ pub enum OpCode {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalVarRef {
+    /// Call frame
     pub frame: usize,
     pub pos: usize,
 }
