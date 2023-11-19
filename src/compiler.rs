@@ -314,8 +314,8 @@ impl Compiler {
             Expr::Primary(Primary::This)
             | Expr::Primary(Primary::Super) => todo!(),
             Expr::Call { lhs, args } => todo!(),
-            Expr::And(_, _) => todo!(),
-            Expr::Or(_, _) => todo!(),
+            Expr::And(lhs, rhs) => self.compile_and(lhs, rhs),
+            Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs),
             Expr::Dot(_, _) => todo!(),
         }
     }
@@ -440,9 +440,27 @@ impl Compiler {
         self.emit_instr(OpCode::Method(compiled_fn));
         */
     }
-    ///
+
     /// Compiles a method.
     fn compile_function(&mut self, f: Ref<Function>) -> Ref<Closure> {
         todo!()
+    }
+
+    /// Compiles the "and" operator
+    fn compile_and(&mut self, lhs: &Expr, rhs: &Expr) {
+        self.compile_expr(lhs);
+        let jump = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
+        self.emit_instr(OpCode::Pop);
+        self.compile_expr(rhs);
+        self.set_jump_tgt(jump);
+    }
+
+    /// Compiles the "or" operator
+    fn compile_or(&mut self, lhs: &Expr, rhs: &Expr) {
+        self.compile_expr(lhs);
+        let jump = self.emit_jump(JumpKind::IfTrue, JumpTgt::default());
+        self.emit_instr(OpCode::Pop);
+        self.compile_expr(rhs);
+        self.set_jump_tgt(jump);
     }
 }

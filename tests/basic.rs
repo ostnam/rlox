@@ -393,7 +393,6 @@ fn test_local_var() {
     );
 }
 
-/*
 #[test]
 fn test_bool_operator() {
     assert_eq!(
@@ -452,6 +451,7 @@ fn test_bool_operator() {
     );
 }
 
+/*
 #[test]
 fn test_while() {
     assert_eq!(
