@@ -495,7 +495,9 @@ impl Parser {
         };
 
         let cond = if !tok_matches!(self, Token::Semicolon) {
-            Some(self.expression()?)
+            let c = Some(self.expression()?);
+            consume!(self, Token::Semicolon, "expected ; after condition of for");
+            c
         } else {
             None
         };
@@ -851,6 +853,27 @@ mod tests {
                         val: box Expr::Primary(Primary::Nil),
                     }
                 }))
+            ],
+        );
+    }
+
+   #[test]
+   fn parse_for() {
+        assert_matches!(
+            run_parser(r#"
+                for (var x = 0; x < 10; x = x + 1) {
+                }
+            "#).unwrap()[..],
+            [
+                Declaration::Stmt(Stmt::For {
+                    init: _,
+                    cond: Some(Expr::Binop {
+                        op: BinaryOperator::LT,
+                        ..
+                    }),
+                    update: _,
+                    body: box Stmt::Block(_),
+                })
             ],
         );
     }
