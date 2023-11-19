@@ -11,7 +11,7 @@ pub struct VM {
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
     ref_resolver: Vec<RefStatus>,
-    functions: Arena<Closure>,
+    closures: Arena<Closure>,
     strings: Arena<String>,
     classes: Arena<Class>,
     instances: Arena<ClassInstance>,
@@ -44,16 +44,17 @@ struct CallFrame {
 }
 
 impl From<CompilationResult> for VM {
-    fn from(main: CompilationResult) -> Self {
+    fn from(mut main: CompilationResult) -> Self {
+        let main_ref = main.closures.insert(main.main);
         VM {
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: main.executable[0], ip: 0, offset: 0 }
+                CallFrame { function: main_ref, ip: 0, offset: 0 }
             ],
             ref_resolver: Vec::new(),
-            functions: main.functions,
+            closures: main.closures,
             strings: main.strings,
             classes: Arena::new(),
             instances: Arena::new(),
@@ -98,7 +99,7 @@ impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
         let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
         let ip = self.get_current_frame()?.ip;
-        Ok(self.functions.get(current_fn).chunk.get(ip).cloned())
+        Ok(self.closures.get(current_fn).chunk.get(ip).cloned())
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
@@ -261,7 +262,7 @@ impl VM {
                     let mut frame_added = false;
                     match self.get_called_fn(n_args)? {
                         Callable::Closure(fn_ref) => {
-                            let f = self.functions.get(fn_ref);
+                            let f = self.closures.get(fn_ref);
                             frame_added = true;
                             if f.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
@@ -285,7 +286,7 @@ impl VM {
                             };
                             let inst_ref = self.instances.insert(new_class_instance(cls));
                             if let Some(init) = self.classes.get(cls).methods.get("init") {
-                                let init_fn = self.functions.get(*init);
+                                let init_fn = self.closures.get(*init);
                                 init_called = true;
                                 frame_added = true;
                                 self.call_frames.push(CallFrame {
@@ -443,13 +444,13 @@ impl VM {
                     let meth_name = self.strings.get(name);
                     match supercls.methods.get(meth_name) {
                         Some(f) => {
-                            let f_closure = self.functions.get(*f).clone();
+                            let f_closure = self.closures.get(*f).clone();
                             let method = Closure {
                                 this: Some(*this),
                                 sup: supercls.sup,
                                 ..f_closure
                             };
-                            let meth_ref = self.functions.insert(method);
+                            let meth_ref = self.closures.insert(method);
                             self.push_val(LoxVal::Closure(meth_ref));
                         }
                         None => return Err(VMError::UndefinedProperty {
@@ -478,13 +479,13 @@ impl VM {
                         }
                         None => match cls.methods.get(prop_name) {
                             Some(f) => {
-                                let f_closure = self.functions.get(*f).clone();
+                                let f_closure = self.closures.get(*f).clone();
                                 let method = Closure {
                                     this: Some(inst_ref),
                                     sup: cls.sup,
                                     ..f_closure
                                 };
-                                let meth_ref = self.functions.insert(method);
+                                let meth_ref = self.closures.insert(method);
                                 self.push_val(LoxVal::Closure(meth_ref));
                             },
                             None => return Err(VMError::UndefinedProperty {
@@ -718,7 +719,7 @@ impl VM {
                                 self.strings.get(s).clone()
                             ),
                             LoxVal::Closure(c) => OwnedLoxVal::Closure(
-                                self.functions.get(c).clone(),
+                                self.closures.get(c).clone(),
                             ),
                             NativeFn(f) => OwnedLoxVal::NativeFn(f),
                             LoxVal::Class(c) => OwnedLoxVal::Class(

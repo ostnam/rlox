@@ -15,8 +15,13 @@ pub struct Compiler {
     current_closure: Ref<Closure>,
     current_closure_type: FnType,
 
-    executable: Vec<Ref<Closure>>,
     current_line: u64,
+}
+
+pub struct CompilationResult {
+    pub strings: Arena<String>,
+    pub closures: Arena<Closure>,
+    pub main: Closure,
 }
 
 #[derive(Clone, Debug)]
@@ -59,12 +64,6 @@ enum JumpKind {
     IfFalse,
 }
 
-pub struct CompilationResult {
-    pub strings: Arena<String>,
-    pub functions: Arena<Closure>,
-    pub executable: Vec<Ref<Closure>>,
-}
-
 impl Compiler {
     pub fn compile(mut input: Parse) -> Option<CompilationResult> {
         let mut closures = Arena::new();
@@ -78,18 +77,15 @@ impl Compiler {
             upval_idx: Vec::new(),
             child_closures: None,
         };
-        let main_ref = closures.insert(main);
         let mut compiler = Self {
             functions: input.functions,
             strings: input.strings,
             closures,
             locals: Vec::new(),
-            current_closure: main_ref,
+            current_closure: main,
             current_closure_type: FnType::Main,
-            executable: Vec::new(),
             current_line: 0,
         };
-        compiler.executable.push(main_ref);
         compiler.run_compilation(input.program)
     }
 
@@ -97,8 +93,8 @@ impl Compiler {
         self.pass(ast).unwrap();
         Some(CompilationResult {
             strings: self.strings,
-            functions: self.closures,
-            executable: self.executable,
+            closures: self.closures,
+            main: self.current_closure,
         })
     }
 
