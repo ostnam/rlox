@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::arena::{Arena, Ref};
 use crate::chunk::{Class,  new_class_instance, OwnedLoxVal};
-use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, Callable, LocalVarRef, ClassInstance, Closure};
+use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, Callable, ClassInstance, Closure};
 use crate::compiler::CompilationResult;
 
 pub struct VM {
@@ -66,7 +66,7 @@ impl From<CompilationResult> for VM {
 pub enum VMError {
     Bug(String),
     LocalResolutionBug {
-        var_ref: LocalVarRef,
+        var_ref: usize,
     },
     EndedWithNoReturn,
     StackExhausted {
@@ -139,14 +139,12 @@ impl VM {
         }
     }
 
-    fn get_local(&self, var_ref: &LocalVarRef) -> Result<Option<&LoxVal>, VMError> {
-        let current_frame = self.get_current_frame()?;
-        Ok(self.stack.get(current_frame.offset + var_ref.pos).map(|x| &x.val))
+    fn get_local(&self, var_ref: usize) -> Result<Option<&LoxVal>, VMError> {
+        Ok(self.stack.get(var_ref).map(|x| &x.val))
     }
 
-    fn set_local(&mut self, var_ref: &LocalVarRef, val: LoxVal) -> Result<(), VMError> {
-        let current_frame_offset = self.get_current_frame_mut()?.offset;
-        self.stack[current_frame_offset + var_ref.pos].val = val;
+    fn set_local(&mut self, var_ref: usize, val: LoxVal) -> Result<(), VMError> {
+        self.stack[var_ref].val = val;
         Ok(())
     }
 
@@ -177,17 +175,13 @@ impl VM {
         todo!()
     }
 
-    /// Registers a new UpVal.
-    /// The pointed-to value's `is_closed_over` field will be set to `true`,
-    /// and the index of the upval returned.
-    fn register_upval(&mut self, var_ref: &LocalVarRef) -> usize {
-        let var_frame_offset = self.call_frames[var_ref.frame].offset;
-        let var_stack_idx = var_frame_offset + var_ref.pos;
+    /// Registers a new UpVal, the index of the upval returned.
+    fn register_upval(&mut self, var_ref: usize) -> usize {
         self.ref_resolver.push(
-            RefStatus::OnStack(var_stack_idx)
+            RefStatus::OnStack(var_ref)
         );
         let upval_idx = self.ref_resolver.len() - 1;
-        self.stack[var_stack_idx].upval_idx = Some(upval_idx);
+        self.stack[var_ref].upval_idx = Some(upval_idx);
         upval_idx
     }
 
@@ -412,7 +406,7 @@ impl VM {
                 }
 
                 OpCode::GetLocal(var_ref) => {
-                    match self.get_local(&var_ref)? {
+                    match self.get_local(var_ref)? {
                         Some(val) => self.push_val(val.clone()),
                         None => return Err(VMError::LocalResolutionBug {
                             var_ref,
@@ -420,7 +414,7 @@ impl VM {
                     }
                 }
                 OpCode::GetSuperMethod(var_ref, name) => {
-                    let supercls_ref = match self.get_local(&var_ref)? {
+                    let supercls_ref = match self.get_local(var_ref)? {
                         Some(LoxVal::Class(val)) => val,
                         Some(LoxVal::Nil) => return Err(VMError::SuperNoSuper),
                         Some(_) => return Err(VMError::Bug(
@@ -431,11 +425,8 @@ impl VM {
                         }),
                     };
                     let supercls = self.classes.get(*supercls_ref);
-                    let this_pos = LocalVarRef {
-                        pos: var_ref.pos - 1,
-                        ..var_ref
-                    };
-                    let this = match self.get_local(&this_pos)? {
+                    let this_pos = var_ref - 1;
+                    let this = match self.get_local(this_pos)? {
                         Some(LoxVal::Instance(r)) => r,
                         _ => return Err(VMError::Bug(
                             "Error getting this".to_string(),
@@ -669,7 +660,7 @@ impl VM {
 
                 OpCode::SetLocal(var_ref) => {
                     let val = self.peek(0)?;
-                    self.set_local(&var_ref, val.clone())?;
+                    self.set_local(var_ref, val.clone())?;
                 }
 
                 OpCode::SetProperty(prop_name_ref) => {

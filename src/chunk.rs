@@ -124,8 +124,8 @@ pub enum OpCode {
     Equal,
     GetProperty(Ref<String>),
     GetGlobal(Ref<String>),
-    GetLocal(LocalVarRef),
-    GetSuperMethod(LocalVarRef, Ref<String>),
+    GetLocal(usize),
+    GetSuperMethod(usize, Ref<String>),
     GetUpval(usize),
     GE,
     GT,
@@ -145,24 +145,9 @@ pub enum OpCode {
     Return,
     SetProperty(Ref<String>),
     SetGlobal(Ref<String>),
-    SetLocal(LocalVarRef),
+    SetLocal(usize),
     SetUpval(usize),
     Substract,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LocalVarRef {
-    /// Call frame
-    pub frame: usize,
-    pub pos: usize,
-}
-
-impl LocalVarRef {
-    /// Returns whether `Self` is closed over: ie it is not from the
-    /// stack frame currently at the top.
-    pub fn is_closed_over(&self, current_frame: usize) -> bool {
-        self.frame < current_frame
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

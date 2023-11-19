@@ -451,7 +451,6 @@ fn test_bool_operator() {
     );
 }
 
-/*
 #[test]
 fn test_while() {
     assert_eq!(
@@ -520,6 +519,7 @@ fn test_for() {
     );
 }
 
+/*
 #[test]
 fn test_functions() {
     assert_eq!(

@@ -1,19 +1,23 @@
 use crate::arena::{Ref, Arena};
 use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary, ForInit, VarDecl};
-use crate::chunk::{Closure, FnType, OpCode, Chunk, Instruction, LoxVal, LocalVarRef};
+use crate::chunk::{Closure, FnType, OpCode, Chunk, Instruction, LoxVal};
 use crate::parser::Parse;
 use crate::refs_eql;
 
+mod resolver;
+use resolver::Resolver;
+
+use self::resolver::StackRef;
+
 pub struct Compiler {
     // Arenas for different objects
-    functions: Arena<Function>,
     strings: Arena<String>,
     closures: Arena<Closure>,
 
-    // for resolving variables
-    locals: Vec<Vec<Local>>,
-    current_closure: Ref<Closure>,
+    resolver: Resolver,
+    current_closure: Closure,
     current_closure_type: FnType,
+    current_closure_level: ClosureLevel,
 
     current_line: u64,
 }
@@ -24,11 +28,10 @@ pub struct CompilationResult {
     pub main: Closure,
 }
 
-#[derive(Clone, Debug)]
-struct Local {
-    name: Ref<String>,
-    depth: usize,
-    initialized: bool,
+enum ClosureLevel {
+    Nothing,
+    Root,
+    Children(Closure),
 }
 
 /// Wrapper type that represents the target of a jump instruction.
@@ -78,12 +81,12 @@ impl Compiler {
             child_closures: None,
         };
         let mut compiler = Self {
-            functions: input.functions,
             strings: input.strings,
             closures,
-            locals: Vec::new(),
+            resolver: Resolver::default(),
             current_closure: main,
             current_closure_type: FnType::Main,
+            current_closure_level: ClosureLevel::Nothing,
             current_line: 0,
         };
         compiler.run_compilation(input.program)
@@ -98,53 +101,14 @@ impl Compiler {
         })
     }
 
-    /// Returns a reference to the function currently being compiled.
-    fn get_current_fn(&self) -> &Closure {
-        self.closures.get(self.current_closure)
-    }
-
-    /// Returns a `&mut` to the function currently being compiled.
-    fn get_current_fn_mut(&mut self) -> &mut Closure {
-        self.closures.get_mut(self.current_closure)
-    }
-
     /// Writes an `Instruction` corresponding to the given `OpCode` at
     /// the end of the current function.
     fn emit_instr(&mut self, op: OpCode) {
         let line = self.current_line;
-        self.get_current_fn_mut()
-            .chunk.push(Instruction { op, line });
+        self.current_closure
+            .chunk
+            .push(Instruction { op, line });
     }
-
-    /// Registers a new local in the current scope.
-    /// If there are no valid scopes currently, does nothing.
-    fn declare_local(&mut self, name: Ref<String>) {
-        let depth = self.current_scope_depth();
-        self.locals.last_mut().map_or_else(
-            || {
-                dbg!("Failed to declare local");
-            },
-            |frame|
-                frame.push(Local {
-                    name,
-                    depth,
-                    initialized: false,
-        }))
-    }
-
-    /// The last declared local's `initialized` value is set to `true`.
-    fn init_last_local(&mut self) {
-        self.locals
-            .last_mut()
-            .and_then(|frame| frame.last_mut())
-            .map_or_else(
-                || {
-                    dbg!("Couldn't init_last_local: no local available");
-                },
-                |local| local.initialized = true
-        );
-    }
-
     /// Writes an error to stdout.
     fn emit_err(&self, err: &str) {
         println!("[{}]: {}", self.current_line, err);
@@ -163,9 +127,9 @@ impl Compiler {
         match decl {
             Declaration::Class { name, super_name, methods } => {
                 self.emit_instr(OpCode::Class(*name));
-                if self.current_scope_depth() > 0 {
-                    self.declare_local(*name);
-                    self.init_last_local();
+                if self.resolver.current_scope_depth() > 0 {
+                    self.resolver.declare_local(*name);
+                    self.resolver.init_last_local();
                 } else {
                     self.emit_instr(OpCode::DefineClass(*name));
                 }
@@ -177,29 +141,29 @@ impl Compiler {
                     self.emit_instr(OpCode::Inherit);
                 }
                 for method in methods {
-                    self.compile_method(*method);
+                    self.compile_method(method);
                 }
-                if self.current_scope_depth() == 0 {
+                if self.resolver.current_scope_depth() == 0 {
                     self.emit_instr(OpCode::Pop);
                 }
             },
-            Declaration::Fun(_) => todo!(),
+            Declaration::Fun(f) => self.compile_function(&f),
             Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
             Declaration::Var(var_decl) => self.compile_var_decl(var_decl),
         }
     }
 
     fn compile_var_decl(&mut self, var_decl: &VarDecl) {
-        if self.current_scope_depth() > 0 {
-            self.declare_local(var_decl.name);
+        if self.resolver.current_scope_depth() > 0 {
+            self.resolver.declare_local(var_decl.name);
         }
         if let Some(expr) = &var_decl.val {
             self.compile_expr(expr);
         } else {
             self.emit_instr(OpCode::Constant(LoxVal::Nil));
         }
-        if self.current_scope_depth() > 0 {
-            self.init_last_local();
+        if self.resolver.current_scope_depth() > 0 {
+            self.resolver.init_last_local();
         } else {
             self.emit_instr(OpCode::DefineGlobal(var_decl.name));
         }
@@ -211,8 +175,9 @@ impl Compiler {
                 self.compile_expr(&expr);
                 self.emit_instr(OpCode::Pop);
             },
+
             Stmt::For { init, cond, update, body } =>  {
-                self.begin_scope();
+                self.resolver.begin_scope();
                 match init {
                     Some(ForInit::Decl(var_decl)) =>
                         self.compile_var_decl(&var_decl),
@@ -227,6 +192,7 @@ impl Compiler {
                     end_jmp = Some(
                         self.emit_jump(JumpKind::IfFalse, JumpTgt::default())
                     );
+                    self.emit_instr(OpCode::Pop);
                 }
                 self.compile_stmt(body);
                 if let Some(expr) = update {
@@ -236,8 +202,10 @@ impl Compiler {
                 if let Some(jmp) = end_jmp {
                     self.set_jump_tgt(jmp);
                 }
+                self.emit_instr(OpCode::Pop);
                 self.end_scope();
             },
+
             Stmt::If { cond, body, else_cond } => {
                 self.compile_expr(cond);
                 let false_jmp = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
@@ -277,7 +245,7 @@ impl Compiler {
                 self.emit_instr(OpCode::Pop);
             },
             Stmt::Block(block) => {
-                self.begin_scope();
+                self.resolver.begin_scope();
                 for decl in block {
                     self.compile_decl(decl);
                 }
@@ -321,12 +289,12 @@ impl Compiler {
         match tgt {
             Expr::Primary(Primary::Name(n)) => {
                 self.compile_expr(val);
-                match self.resolve_local(*n) {
-                    Some(local_var_ref) if local_var_ref.is_closed_over(self.current_scope_depth()) => {
-                        self.register_upval(local_var_ref);
+                match self.resolver.resolve_local(&self.strings, *n) {
+                    Some(StackRef::Local(idx)) => self.emit_instr(OpCode::SetLocal(idx)),
+                    Some(StackRef::ClosedOver(idx)) => {
+                        self.register_upval(idx);
                         self.emit_instr(OpCode::SetUpval(0));
                     },
-                    Some(local_var_ref) => self.emit_instr(OpCode::SetLocal(local_var_ref)),
                     None => self.emit_instr(OpCode::SetGlobal(*n)),
                 }
             },
@@ -341,22 +309,11 @@ impl Compiler {
         }
     }
 
-    /// Adds the index of the next instruction in the body of the current
-    /// function. As a result, a `{Get,Set}Upval` instr should be emitted next.
-    fn register_upval(&mut self, upval_tgt: LocalVarRef) {
-        let current_fn = self.get_current_fn_mut();
-        current_fn.upval_idx.push(current_fn.chunk.len());
-    }
-
-    fn resolve_local(&mut self, name: Ref<String>) -> Option<LocalVarRef> {
-        for (scope_idx, scope) in self.locals.iter().rev().enumerate() {
-            for (local_idx, local) in scope.iter().rev().enumerate() {
-                if refs_eql!(self.strings, local.name, name) {
-                    return Some(LocalVarRef { frame: scope_idx, pos: local_idx });
-                }
-            }
-        }
-        None
+    /// Adds the index of the next instruction of the current function.
+    /// As a result, a `{Get,Set}Upval` instr should be emitted next.
+    fn register_upval(&mut self, upval_tgt: usize) {
+        todo!();
+        self.current_closure.upval_idx.push(self.current_closure.chunk.len());
     }
 
     /// Returns a `JumpTgt` that corresponds to the next instruction.
@@ -381,8 +338,7 @@ impl Compiler {
     /// instruction.
     fn set_jump_tgt(&mut self, jmp: JumpRef) {
         let tgt = self.get_next_instr_idx();
-        let current_fn = self.get_current_fn_mut();
-        match current_fn.chunk.get_mut(jmp.idx) {
+        match self.current_closure.chunk.get_mut(jmp.idx) {
             Some(x@Instruction { op: OpCode::Jump(_), .. }) => {
                 x.op = OpCode::Jump(tgt);
             },
@@ -398,38 +354,22 @@ impl Compiler {
 
     /// Returns the index of the next instruction to be compiled.
     fn get_next_instr_idx(&self) -> usize {
-        self.get_current_fn().chunk.len()
-    }
-
-    fn current_scope_depth(&self) -> usize {
-        self.locals.len()
-    }
-
-    fn begin_scope(&mut self) {
-        self.locals.push(Vec::new());
-    }
-
-    fn end_scope(&mut self) {
-        let dropped = self.locals.pop();
-        if let Some(v) = dropped {
-            for _ in v {
-                self.emit_instr(OpCode::Pop);
-            }
-        }
+        self.current_closure.chunk.len()
     }
 
     /// Compiles the instructions to read the variable
     /// (== push it to the stack) with the given `name`,
     /// in the current scope.
     fn compile_read_var(&mut self, name: Ref<String>) {
-        match self.resolve_local(name) {
-            Some(stack_ref) => self.emit_instr(OpCode::GetLocal(stack_ref)),
+        match self.resolver.resolve_local(&self.strings, name) {
+            Some(StackRef::Local(idx)) => self.emit_instr(OpCode::GetLocal(idx)),
+            Some(StackRef::ClosedOver(idx)) => self.emit_instr(OpCode::GetUpval(idx)),
             None => self.emit_instr(OpCode::GetGlobal(name)),
         }
     }
 
     /// Compiles a method.
-    fn compile_method(&mut self, method: Ref<Function>) {
+    fn compile_method(&mut self, method: &Function) {
         /*
         let meth = self.functions.get(method);
         let compiled_fn = self.compile_function(meth);
@@ -437,9 +377,75 @@ impl Compiler {
         */
     }
 
-    /// Compiles a method.
-    fn compile_function(&mut self, f: Ref<Function>) -> Ref<Closure> {
-        todo!()
+    /// Compiles a function.
+    fn compile_function(&mut self, f: &Function) {
+        // if we're in a local scope, we need to add the function name
+        // as a local variable so that when we compile the body,
+        // the name resolves properly.
+        if self.resolver.current_scope_depth() > 0 {
+            self.resolver.declare_local(f.name);
+            self.resolver.init_last_local();
+        };
+        let new_closure = Closure {
+            arity: f.arity,
+            chunk: Vec::new(),
+            name: f.name,
+            this: None,
+            sup: None,
+            upval_idx: Vec::new(),
+            child_closures: None,
+        };
+        let old_closure = Some(std::mem::replace(&mut self.current_closure, new_closure));
+        let (old_closure, old_closure_level) = match &self.current_closure_level {
+                ClosureLevel::Nothing => {
+                    self.current_closure_level = ClosureLevel::Root;
+                    self.current_closure.child_closures = Some(Vec::new());
+                    (old_closure, Some(ClosureLevel::Nothing))
+                },
+                ClosureLevel::Root => {
+                    self.current_closure_level = ClosureLevel::Children(old_closure.unwrap());
+                    (None, Some(ClosureLevel::Root))
+
+                },
+                ClosureLevel::Children(_) => (old_closure, None)
+        };
+        self.resolver.begin_fn_scope(f);
+        for decl in &f.body {
+            self.compile_decl(decl);
+        }
+        self.emit_implicit_return();
+        self.resolver.end_fn_scope();
+        let old_closure = match (old_closure, old_closure_level) {
+            (Some(c), Some(ClosureLevel::Nothing)) => {
+                self.current_closure_level = ClosureLevel::Nothing;
+                c
+            }
+            (None, Some(ClosureLevel::Root)) => {
+                if let ClosureLevel::Children(c) = std::mem::replace(&mut self.current_closure_level, ClosureLevel::Root) {
+                    c
+                } else {
+                    unreachable!("invariant violated")
+                }
+            }
+            (Some(c), None) => c,
+            _ => unreachable!("invariant violated"),
+        };
+        let new_closure = std::mem::replace(&mut self.current_closure, old_closure);
+        let new_closure_name = new_closure.name;
+        let new_closure_ref = self.closures.insert(new_closure);
+        if self.resolver.current_scope_depth() > 0 {
+            self.emit_instr(OpCode::Closure(new_closure_ref));
+            self.resolver.declare_local(new_closure_name);
+            self.resolver.init_last_local();
+        } else {
+            self.emit_instr(OpCode::Constant(LoxVal::Closure(new_closure_ref)));
+            self.emit_instr(OpCode::DefineGlobal(new_closure_name));
+        }
+    }
+
+    fn emit_implicit_return(&mut self) {
+        self.emit_instr(OpCode::Constant(LoxVal::Nil));
+        self.emit_instr(OpCode::Return);
     }
 
     /// Compiles the "and" operator
@@ -458,5 +464,12 @@ impl Compiler {
         self.emit_instr(OpCode::Pop);
         self.compile_expr(rhs);
         self.set_jump_tgt(jump);
+    }
+
+    fn end_scope(&mut self) {
+        let num_to_pop = self.resolver.end_scope();
+        for _ in 0..num_to_pop {
+            self.emit_instr(OpCode::Pop);
+        }
     }
 }
