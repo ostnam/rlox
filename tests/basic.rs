@@ -344,7 +344,6 @@ fn test_global_var() {
     );
 }
 
-/*
 #[test]
 fn test_local_var() {
     assert_eq!(
@@ -394,6 +393,7 @@ fn test_local_var() {
     );
 }
 
+/*
 #[test]
 fn test_bool_operator() {
     assert_eq!(

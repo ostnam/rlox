@@ -177,7 +177,7 @@ impl Compiler {
                     if refs_eql!(self.strings, *sup_name_ref, *name) {
                         self.emit_err("class can't inherit from itself");
                     }
-                    self.read_variable(*sup_name_ref);
+                    self.compile_read_var(*sup_name_ref);
                     self.emit_instr(OpCode::Inherit);
                 }
                 for method in methods {
@@ -344,13 +344,6 @@ impl Compiler {
         }
     }
 
-    fn compile_read_var(&mut self, name: Ref<String>) {
-        match self.resolve_local(name) {
-            Some(_) => todo!(),
-            None => self.emit_instr(OpCode::GetGlobal(name)),
-        }
-    }
-
     /// Adds the index of the next instruction in the body of the current
     /// function. As a result, a `{Get,Set}Upval` instr should be emitted next.
     fn register_upval(&mut self, upval_tgt: LocalVarRef) {
@@ -359,6 +352,13 @@ impl Compiler {
     }
 
     fn resolve_local(&mut self, name: Ref<String>) -> Option<LocalVarRef> {
+        for (scope_idx, scope) in self.locals.iter().rev().enumerate() {
+            for (local_idx, local) in scope.iter().rev().enumerate() {
+                if refs_eql!(self.strings, local.name, name) {
+                    return Some(LocalVarRef { frame: scope_idx, pos: local_idx });
+                }
+            }
+        }
         None
     }
 
@@ -409,16 +409,26 @@ impl Compiler {
     }
 
     fn begin_scope(&mut self) {
+        self.locals.push(Vec::new());
     }
 
     fn end_scope(&mut self) {
+        let dropped = self.locals.pop();
+        if let Some(v) = dropped {
+            for _ in v {
+                self.emit_instr(OpCode::Pop);
+            }
+        }
     }
 
     /// Compiles the instructions to read the variable
     /// (== push it to the stack) with the given `name`,
     /// in the current scope.
-    fn read_variable(&mut self, name: Ref<String>) {
-        todo!()
+    fn compile_read_var(&mut self, name: Ref<String>) {
+        match self.resolve_local(name) {
+            Some(stack_ref) => self.emit_instr(OpCode::GetLocal(stack_ref)),
+            None => self.emit_instr(OpCode::GetGlobal(name)),
+        }
     }
 
     /// Compiles a method.
