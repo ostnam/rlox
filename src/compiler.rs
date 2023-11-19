@@ -76,7 +76,7 @@ impl Compiler {
             sup: None,
             this: None,
             upval_idx: Vec::new(),
-            child_closures: Vec::new(),
+            child_closures: None,
         };
         let main_ref = closures.insert(main);
         let mut compiler = Self {
