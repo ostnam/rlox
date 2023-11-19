@@ -349,19 +349,19 @@ impl Parser {
         let fn_name = self.identifier("after fun")?;
         consume!(self, Token::LParen, "missing ( after function name");
         let mut first = true;
-        let mut arity = 0;
+        let mut args = Vec::new();
         if !tok_matches!(self, Token::RParen) {
             while first || tok_matches!(self, Token::Comma) {
                 first = false;
-                self.identifier("in parameters list")?;
-                arity += 1;
+                let arg = self.identifier("in parameters list")?;
+                args.push(arg);
             }
             consume!(self, Token::RParen, "missing ) after function args");
         }
         consume!(self, Token::LBrace, "missing { after function args");
         let block = self.block()?;
         let new_fn = Function {
-            arity,
+            args,
             body: block,
             name: fn_name,
         };

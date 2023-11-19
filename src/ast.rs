@@ -24,7 +24,7 @@ pub struct VarDecl {
 /// In the bytecode and at runtime, functions are represented by `Closures`
 #[derive(PartialEq, Debug)]
 pub struct Function {
-    pub arity: u8,
+    pub args: Vec<Ref<String>>,
     pub body: Block,
     pub name: Ref<String>,
 }
