@@ -94,16 +94,12 @@ impl Compiler {
     }
 
     fn run_compilation(mut self, ast: Vec<Declaration>) -> Option<CompilationResult> {
-        self.optimize_ast();
         self.pass(ast).unwrap();
         Some(CompilationResult {
             strings: self.strings,
             functions: self.closures,
             executable: self.executable,
         })
-    }
-
-    fn optimize_ast(&mut self) {
     }
 
     /// Returns a reference to the function currently being compiled.
