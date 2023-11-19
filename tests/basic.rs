@@ -519,7 +519,6 @@ fn test_for() {
     );
 }
 
-/*
 #[test]
 fn test_functions() {
     assert_eq!(
@@ -528,20 +527,9 @@ fn test_functions() {
                 arg + 10;
             }
 
-            print f;
+            f(20);
         "#),
-        Ok(OwnedLoxVal::Function(Function {
-            arity: 1,
-            chunk: Chunk(vec![
-                Instruction { op: OpCode::GetLocal(LocalVarRef { frame: 1, pos: 0 }), line: 3},
-                Instruction { op: OpCode::Constant(OwnedLoxVal::Num(10.0)), line: 3},
-                Instruction { op: OpCode::Add, line: 3},
-                Instruction { op: OpCode::Pop, line: 3},
-                Instruction { op: OpCode::Constant(OwnedLoxVal::Nil), line: 4},
-                Instruction { op: OpCode::Return, line: 4},
-            ]),
-            name: "f".to_string(),
-        })),
+        Ok(OwnedLoxVal::Num(30.0)),
     );
     assert_eq!(
         common::run_program(r#"
@@ -566,6 +554,7 @@ fn test_functions() {
     );
 }
 
+/*
 #[test]
 fn test_closures() {
     assert_eq!(
