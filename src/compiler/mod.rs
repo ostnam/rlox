@@ -181,8 +181,10 @@ impl Compiler {
                 match init {
                     Some(ForInit::Decl(var_decl)) =>
                         self.compile_var_decl(&var_decl),
-                    Some(ForInit::Expr(expr)) =>
-                        self.compile_expr(&expr),
+                    Some(ForInit::Expr(expr)) => {
+                        self.compile_expr(&expr);
+                        self.emit_instr(OpCode::Pop);
+                    }
                     None => (),
                 };
                 let mut end_jmp = None;
@@ -197,6 +199,7 @@ impl Compiler {
                 self.compile_stmt(body);
                 if let Some(expr) = update {
                     self.compile_expr(expr);
+                    self.emit_instr(OpCode::Pop);
                     self.emit_jump(JumpKind::Inconditional, before_cond);
                 }
                 if let Some(jmp) = end_jmp {
