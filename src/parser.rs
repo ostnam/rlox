@@ -346,7 +346,7 @@ impl Parser {
 
     /// The fun keyword must already have been matched.
     fn function_declaration(&mut self) -> Option<Declaration> {
-        let _ = self.identifier("after fun")?;
+        let fn_name = self.identifier("after fun")?;
         consume!(self, Token::LParen, "missing ( after function name");
         let mut first = true;
         let mut arity = 0;
@@ -363,11 +363,9 @@ impl Parser {
         let new_fn = Function {
             arity,
             body: block,
-            closed_over: Vec::new(),
-            sub_closures: Vec::new(),
+            name: fn_name,
         };
-        let fn_ref = self.functions.insert(new_fn);
-        Some(Declaration::Fun(fn_ref))
+        Some(Declaration::Fun(new_fn))
     }
 
     fn class_declaration(&mut self) -> Option<Declaration> {

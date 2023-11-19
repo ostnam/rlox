@@ -49,7 +49,7 @@ pub struct Closure {
     pub upval_idx: Vec<usize>,
 
     /// Stores the index of every `Closure` defined in the body of this one.
-    pub child_closures: Option<Vec<usize>>,
+    pub child_closures: Option<Vec<Ref<Closure>>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

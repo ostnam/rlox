@@ -7,9 +7,9 @@ pub enum Declaration {
     Class {
         name: Ref<String>,
         super_name: Option<Ref<String>>,
-        methods: Vec<Ref<Function>>,
+        methods: Vec<Function>,
     },
-    Fun(Ref<Function>),
+    Fun(Function),
     Var(VarDecl),
     Stmt(Stmt),
 }
@@ -20,18 +20,13 @@ pub struct VarDecl {
     pub val: Option<Expr>,
 }
 
+/// `Functions` are AST nodes for a function/method declaration.
+/// In the bytecode and at runtime, functions are represented by `Closures`
 #[derive(PartialEq, Debug)]
 pub struct Function {
     pub arity: u8,
     pub body: Block,
-    pub closed_over: Vec<StackRef>,
-    pub sub_closures: Vec<Ref<Function>>,
-}
-
-#[derive(PartialEq, Debug)]
-pub struct StackRef {
-    frame: usize,
-    index: usize,
+    pub name: Ref<String>,
 }
 
 pub type Block = Vec<Declaration>;
