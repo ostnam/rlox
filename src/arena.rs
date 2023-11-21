@@ -10,7 +10,7 @@ pub struct Arena<T> {
 
 /// Storing a `T` into an arena returns a `Ref<T>`.
 /// This `Ref<T>` can later be used to retrieve the `T`, set a new value, etc.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Ref<T> {
     /// Position of the item in the heap of the `Arena`.
     idx: usize,
@@ -18,6 +18,14 @@ pub struct Ref<T> {
     /// Needed for type-checking.
     phantom: PhantomData<T>,
 }
+
+impl<T> PartialEq for Ref<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.idx == other.idx
+    }
+}
+
+impl<T> Eq for Ref<T> {}
 
 #[macro_export]
 /// Concisely check if the values pointed-to by two `Ref` are equal.
