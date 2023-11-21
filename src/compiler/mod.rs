@@ -20,6 +20,7 @@ pub struct Compiler {
     current_closure_level: ClosureLevel,
 
     current_line: u64,
+    had_error: bool,
 }
 
 pub struct CompilationResult {
@@ -88,17 +89,22 @@ impl Compiler {
             current_closure_type: FnType::Main,
             current_closure_level: ClosureLevel::Nothing,
             current_line: 0,
+            had_error: false,
         };
         compiler.run_compilation(input.program)
     }
 
     fn run_compilation(mut self, ast: Vec<Declaration>) -> Option<CompilationResult> {
         self.pass(ast).unwrap();
-        Some(CompilationResult {
-            strings: self.strings,
-            closures: self.closures,
-            main: self.current_closure,
-        })
+        if self.had_error {
+            None
+        } else {
+            Some(CompilationResult {
+                strings: self.strings,
+                closures: self.closures,
+                main: self.current_closure,
+            })
+        }
     }
 
     /// Writes an `Instruction` corresponding to the given `OpCode` at
@@ -110,7 +116,8 @@ impl Compiler {
             .push(Instruction { op, line });
     }
     /// Writes an error to stdout.
-    fn emit_err(&self, err: &str) {
+    fn emit_err(&mut self, err: &str) {
+        self.had_error = true;
         println!("[{}]: {}", self.current_line, err);
     }
 
