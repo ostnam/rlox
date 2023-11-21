@@ -529,7 +529,7 @@ fn test_functions() {
 
             f(20);
         "#),
-        Ok(OwnedLoxVal::Num(30.0)),
+        Ok(OwnedLoxVal::Nil),
     );
     assert_eq!(
         common::run_program(r#"

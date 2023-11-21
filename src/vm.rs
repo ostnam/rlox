@@ -140,7 +140,9 @@ impl VM {
     }
 
     fn get_local(&self, var_ref: usize) -> Result<Option<&LoxVal>, VMError> {
-        Ok(self.stack.get(var_ref).map(|x| &x.val))
+        let current_frame = self.get_current_frame()?;
+        Ok(self.stack.get(current_frame.offset + var_ref).map(|x| &x.val))
+
     }
 
     fn set_local(&mut self, var_ref: usize, val: LoxVal) -> Result<(), VMError> {
@@ -253,11 +255,13 @@ impl VM {
                 }
 
                 OpCode::Call(n_args) => {
-                    let mut frame_added = false;
-                    match self.get_called_fn(n_args)? {
-                        Callable::Closure(fn_ref) => {
-                            let f = self.closures.get(fn_ref);
-                            frame_added = true;
+                    match self.call_frames.last_mut() {
+                        Some(frame) => frame.ip += 1,
+                        None => (),
+                    };
+                    match self.pop_val()? {
+                        LoxVal::Closure(closure_ref) => {
+                            let f = self.closures.get(closure_ref);
                             if f.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
                                     expected: f.arity,
@@ -266,72 +270,12 @@ impl VM {
                                 });
                             }
                             self.call_frames.push(CallFrame {
-                                function: fn_ref,
+                                function: closure_ref,
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
                             });
-                        },
-                        Callable::Class(cls) => {
-                            let class = self.classes.get(cls);
-                            let mut init_called = false;
-                            let sup = match class.sup {
-                                Some(s) => LoxVal::Class(s),
-                                None => LoxVal::Nil,
-                            };
-                            let inst_ref = self.instances.insert(new_class_instance(cls));
-                            if let Some(init) = self.classes.get(cls).methods.get("init") {
-                                let init_fn = self.closures.get(*init);
-                                init_called = true;
-                                frame_added = true;
-                                self.call_frames.push(CallFrame {
-                                    function: *init,
-                                    ip: 0,
-                                    offset: self.stack.len() - init_fn.arity as usize,
-                                });
-                            } else {
-                                self.pop_val()?;
-                            }
-                            self.push_val(LoxVal::Instance(inst_ref));
-                            if init_called {
-                                self.push_val(sup);
-                            }
-                        },
-                        Callable::NativeFn(f) => {
-                            self.apply_native(f, n_args)?;
-                        },
-                        /*
-                        Callable::Method(m) => {
-                            frame_added = true;
-                            let method = self.methods.get(m);
-                            let sup = match method.sup {
-                                Some(s) => LoxVal::Class(s),
-                                None => LoxVal::Nil,
-                            };
-                            if method.method.arity != n_args {
-                                return Err(VMError::IncorrectArgCount {
-                                    expected: method.method.arity,
-                                    got: n_args,
-                                    line: 0
-                                });
-                            }
-                            self.call_frames.push(CallFrame {
-                                function: m,
-                                ip: 0,
-                                offset: self.stack.len() - n_args as usize,
-                            });
-                            self.push_val(LoxVal::Instance(method.this));
-                            self.push_val(sup);
-                        },
-                        */
-                    };
-                    let prev_fn_idx = if frame_added {
-                        self.call_frames.len() - 2
-                    } else {
-                        self.call_frames.len() - 1
-                    };
-                    match self.call_frames.get_mut(prev_fn_idx) {
-                        Some(frame) => frame.ip += 1,
-                        None => (),
+                        }
+                        _ => unreachable!("aaa"),
                     };
                     continue;
                 },
@@ -701,7 +645,7 @@ impl VM {
 
                 OpCode::Return => {
                     if self.call_frames.len() == 1 {
-                        let last =self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone());
+                        let last = self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone());
                         return Ok(match last {
                             Bool(b) => OwnedLoxVal::Bool(b),
                             Nil => OwnedLoxVal::Nil,
@@ -723,10 +667,7 @@ impl VM {
                     }
                     let result = self.pop_val().unwrap();
                     let old_frame = self.call_frames.pop().unwrap();
-                    for _ in old_frame.offset..self.stack.len() {
-                        self.pop_var();
-                    }
-                    self.pop_val()?;
+                    self.stack.truncate(old_frame.offset);
                     self.push_val(result);
                     continue;
                 }

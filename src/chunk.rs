@@ -114,6 +114,11 @@ impl LoxVal {
 #[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
+
+    /// Stores the number of arguments stored.
+    /// When it is called, the top of the stack will be the function to call,
+    /// and the values before that the rest of the arguments.
+    /// The function (top of stack) will be popped by this instruction.
     Call(u8),
     Constant(LoxVal),
     Class(Ref<String>),

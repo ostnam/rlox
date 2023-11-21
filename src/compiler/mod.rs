@@ -287,7 +287,13 @@ impl Compiler {
             Expr::Primary(Primary::Name(name)) => self.compile_read_var(*name),
             Expr::Primary(Primary::This)
             | Expr::Primary(Primary::Super) => todo!(),
-            Expr::Call { lhs, args } => todo!(),
+            Expr::Call { lhs, args } => {
+                for arg in args {
+                    self.compile_expr(arg);
+                }
+                self.compile_expr(lhs);
+                self.emit_instr(OpCode::Call(args.len() as u8));
+            }
             Expr::And(lhs, rhs) => self.compile_and(lhs, rhs),
             Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs),
             Expr::Dot(_, _) => todo!(),
@@ -396,53 +402,36 @@ impl Compiler {
             self.resolver.declare_local(f.name);
             self.resolver.init_last_local();
         };
+        let arity = match f.args.len().try_into() {
+            Ok(a) => a,
+            _ => {
+                self.emit_err("Function takes {} parameters (maximum: 255).");
+                0
+            },
+        };
+
         let new_closure = Closure {
-            arity: f.arity,
+            arity,
             chunk: Vec::new(),
             name: f.name,
             this: None,
             sup: None,
             upval_idx: Vec::new(),
-            child_closures: None,
+            child_closures: Vec::new(),
         };
-        let old_closure = Some(std::mem::replace(&mut self.current_closure, new_closure));
-        let (old_closure, old_closure_level) = match &self.current_closure_level {
-                ClosureLevel::Nothing => {
-                    self.current_closure_level = ClosureLevel::Root;
-                    self.current_closure.child_closures = Some(Vec::new());
-                    (old_closure, Some(ClosureLevel::Nothing))
-                },
-                ClosureLevel::Root => {
-                    self.current_closure_level = ClosureLevel::Children(old_closure.unwrap());
-                    (None, Some(ClosureLevel::Root))
-
-                },
-                ClosureLevel::Children(_) => (old_closure, None)
-        };
+        let parent_closure = std::mem::replace(&mut self.current_closure, new_closure);
+        let grandparent_closure = std::mem::replace(&mut self.current_parent_closure, Some(parent_closure));
         self.resolver.begin_fn_scope(f);
         for decl in &f.body {
             self.compile_decl(decl);
         }
         self.emit_implicit_return();
         self.resolver.end_fn_scope();
-        let old_closure = match (old_closure, old_closure_level) {
-            (Some(c), Some(ClosureLevel::Nothing)) => {
-                self.current_closure_level = ClosureLevel::Nothing;
-                c
-            }
-            (None, Some(ClosureLevel::Root)) => {
-                if let ClosureLevel::Children(c) = std::mem::replace(&mut self.current_closure_level, ClosureLevel::Root) {
-                    c
-                } else {
-                    unreachable!("invariant violated")
-                }
-            }
-            (Some(c), None) => c,
-            _ => unreachable!("invariant violated"),
-        };
-        let new_closure = std::mem::replace(&mut self.current_closure, old_closure);
+        let parent_closure = std::mem::replace(&mut self.current_parent_closure, grandparent_closure).unwrap();
+        let new_closure = std::mem::replace(&mut self.current_closure, parent_closure);
         let new_closure_name = new_closure.name;
         let new_closure_ref = self.closures.insert(new_closure);
+        self.current_closure.child_closures.push(new_closure_ref);
         if self.resolver.current_scope_depth() > 0 {
             self.emit_instr(OpCode::Closure(new_closure_ref));
             self.resolver.declare_local(new_closure_name);
