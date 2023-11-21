@@ -91,6 +91,15 @@ impl<T> Arena<T> {
     }
 }
 
+impl <T: Clone> Arena<T> {
+    /// Stores a new value, equal to the one in the passed `Ref` in the `Arena`
+    /// and returns its `Ref`.
+    pub fn clone_in_arena(&mut self, key: Ref<T>) -> Ref<T> {
+        let og = self.get(key);
+        self.insert(og.clone())
+    }
+}
+
 impl<T> Default for Arena<T> {
     fn default() -> Self {
         Self::new()
