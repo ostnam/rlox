@@ -135,7 +135,9 @@ impl Compiler {
             Declaration::Class { name, super_name, methods } => {
                 self.emit_instr(OpCode::Class(*name));
                 if self.resolver.current_scope_depth() > 0 {
-                    self.resolver.declare_local(*name);
+                    if let Err(s) = self.resolver.declare_local(&self.strings, *name) {
+                        self.emit_err(s);
+                    }
                     self.resolver.init_last_local();
                 } else {
                     self.emit_instr(OpCode::DefineClass(*name));
@@ -162,7 +164,9 @@ impl Compiler {
 
     fn compile_var_decl(&mut self, var_decl: &VarDecl) {
         if self.resolver.current_scope_depth() > 0 {
-            self.resolver.declare_local(var_decl.name);
+            if let Err(s) = self.resolver.declare_local(&self.strings, var_decl.name) {
+                self.emit_err(s);
+            }
         }
         if let Some(expr) = &var_decl.val {
             self.compile_expr(expr);
@@ -305,7 +309,7 @@ impl Compiler {
         match tgt {
             Expr::Primary(Primary::Name(n)) => {
                 self.compile_expr(val);
-                match self.resolver.resolve_local(&self.strings, *n) {
+                match self.resolver.resolve(&self.strings, *n) {
                     Some(StackRef::Local(idx)) => self.emit_instr(OpCode::SetLocal(idx)),
                     Some(StackRef::ClosedOver(idx)) => {
                         self.register_upval(idx);
@@ -399,7 +403,9 @@ impl Compiler {
         // as a local variable so that when we compile the body,
         // the name resolves properly.
         if self.resolver.current_scope_depth() > 0 {
-            self.resolver.declare_local(f.name);
+            if let Err(s) = self.resolver.declare_local(&self.strings, f.name) {
+                self.emit_err(s);
+            }
             self.resolver.init_last_local();
         };
         let arity = match f.args.len().try_into() {
@@ -421,7 +427,10 @@ impl Compiler {
         };
         let parent_closure = std::mem::replace(&mut self.current_closure, new_closure);
         let grandparent_closure = std::mem::replace(&mut self.current_parent_closure, Some(parent_closure));
-        self.resolver.begin_fn_scope(f);
+        let res = self.resolver.begin_fn_scope(&self.strings, new_closure_ref, &f.args);
+        if let Err(s) = res {
+            self.emit_err(s);
+        }
         for decl in &f.body {
             self.compile_decl(decl);
         }
@@ -434,7 +443,9 @@ impl Compiler {
         self.current_closure.child_closures.push(new_closure_ref);
         if self.resolver.current_scope_depth() > 0 {
             self.emit_instr(OpCode::Closure(new_closure_ref));
-            self.resolver.declare_local(new_closure_name);
+            if let Err(s) = self.resolver.declare_local(&self.strings, new_closure_name) {
+                self.emit_err(s);
+            }
             self.resolver.init_last_local();
         } else {
             self.emit_instr(OpCode::Constant(LoxVal::Closure(new_closure_ref)));

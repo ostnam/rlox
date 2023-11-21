@@ -12,13 +12,15 @@ pub struct Resolver {
 
 /// A variable on the stack.
 #[derive(Clone, Debug)]
-pub struct Local {
-    pub name: Ref<String>,
+struct Local {
+    name: Ref<String>,
 
     /// Set to false at the beginning of the `var` statement, and to true at the end.
     /// Ensures that a variable being declared can't be accessed in its
     /// initialization code.
-    pub initialized: bool,
+    initialized: bool,
+
+    id: usize
 }
 
 pub enum StackRef {
@@ -47,21 +49,33 @@ impl Scope {
 #[derive(PartialEq, Eq)]
 enum ScopeKind {
     Block,
-    Function,
+    Function(Ref<Closure>),
 }
 
 impl Resolver {
     /// Registers a new local in the current scope.
     /// If there are no valid scopes currently, does nothing.
-    pub fn declare_local(&mut self, name: Ref<String>) {
+    pub fn declare_local(
+        &mut self,
+        arena: &Arena<String>,
+        name: Ref<String>,
+    ) -> Result<(), &'static str> {
         debug_assert!(self.scopes.len() > 0);
+        let id = self.gen_local_id();
+        for local in self.current_scope() {
+            if refs_eql!(arena, name, local.name) {
+                return Err("variable name already used in the same scope");
+            }
+        }
         self.locals.push(Local {
             name,
             initialized: false,
+            id,
         });
         self.scopes
             .last_mut()
             .map(|scope| scope.length += 1);
+        Ok(())
     }
 
     /// The last declared local's `initialized` value is set to `true`.

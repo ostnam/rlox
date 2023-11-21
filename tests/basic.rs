@@ -391,6 +391,25 @@ fn test_local_var() {
         "#),
         Ok(OwnedLoxVal::Num(20.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            { var a = 10;
+                {
+                    var a = 20;
+                }
+            }
+        "#),
+        Ok(OwnedLoxVal::Num(20.0)),
+    );
+    assert_matches!(
+        common::compile(r#"
+            {
+                var a = 10;
+                var a = 20;
+            }
+        "#),
+        None,
+    );
 }
 
 #[test]
