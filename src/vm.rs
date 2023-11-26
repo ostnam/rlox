@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::arena::{Arena, Ref};
-use crate::chunk::{Class,  new_class_instance, OwnedLoxVal};
-use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, Callable, ClassInstance, Closure};
+use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue};
+use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, ClassInstance, Closure};
 use crate::compiler::CompilationResult;
 
 pub struct VM {
@@ -10,32 +10,28 @@ pub struct VM {
     globals: HashMap<String, LoxVal>,
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
-    ref_resolver: Vec<RefStatus>,
+    heap: Arena<LoxVal>,
     closures: Arena<Closure>,
+    functions: Arena<CompiledFn>,
     strings: Arena<String>,
     classes: Arena<Class>,
     instances: Arena<ClassInstance>,
 }
 
-struct LocalVar {
-    val: LoxVal,
-    upval_idx: Option<usize>,
-}
-
-enum RefStatus {
-    OnStack(usize),
-    OnHeap(LoxVal),
+enum LocalVar {
+    OnStack(LoxVal),
+    OnHeap(Ref<LoxVal>),
 }
 
 impl From<LoxVal> for LocalVar {
     fn from(val: LoxVal) -> Self {
-        LocalVar { val, upval_idx: None }
+        LocalVar::OnStack(val)
     }
 }
 
 struct CallFrame {
     /// Index of the function in the VM functions field.
-    function: Ref<Closure>,
+    closure: Ref<Closure>,
     ip: usize,
     /// Index of the stack where the frame starts
     /// when calling a function, the value of the function being called is
@@ -44,17 +40,25 @@ struct CallFrame {
 }
 
 impl From<CompilationResult> for VM {
-    fn from(mut main: CompilationResult) -> Self {
-        let main_ref = main.closures.insert(main.main);
+    fn from(main: CompilationResult) -> Self {
+        let main_closure = Closure {
+            function: main.main,
+            sup: None,
+            this: None,
+            upvalues: Vec::new(),
+        };
+        let mut closures = Arena::new();
+        let main_closure_ref = closures.insert(main_closure);
         VM {
             stack: Vec::new(),
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { function: main_ref, ip: 0, offset: 0 }
+                CallFrame { closure: main_closure_ref, ip: 0, offset: 0 }
             ],
-            ref_resolver: Vec::new(),
-            closures: main.closures,
+            heap: Arena::new(),
+            functions: main.closures,
+            closures,
             strings: main.strings,
             classes: Arena::new(),
             instances: Arena::new(),
@@ -66,7 +70,7 @@ impl From<CompilationResult> for VM {
 pub enum VMError {
     Bug(String),
     LocalResolutionBug {
-        var_ref: usize,
+        var_ref: RelativeStackIdx,
     },
     EndedWithNoReturn,
     StackExhausted {
@@ -93,13 +97,18 @@ pub enum VMError {
         prop_name: String,
     },
     SuperNoSuper,
+    UpvalueResolutionBug,
+    UpvalueCaptureBug,
+    UpvalueRegistrationBug,
 }
 
 impl VM {
     fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
-        let current_fn = self.call_frames[self.call_frames.len() - 1].function.clone();
+        let current_fn = self.call_frames[self.call_frames.len() - 1].closure.clone();
         let ip = self.get_current_frame()?.ip;
-        Ok(self.closures.get(current_fn).chunk.get(ip).cloned())
+        let fn_ref = self.closures.get(current_fn).function;
+        let chunk = &self.functions.get(fn_ref).chunk;
+        Ok(chunk.get(ip).cloned())
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
@@ -139,87 +148,58 @@ impl VM {
         }
     }
 
-    fn get_local(&self, var_ref: usize) -> Result<Option<&LoxVal>, VMError> {
+    fn get_local(&self, var_ref: RelativeStackIdx) -> Result<&LoxVal, VMError> {
         let current_frame = self.get_current_frame()?;
-        Ok(self.stack.get(current_frame.offset + var_ref).map(|x| &x.val))
+        match self.stack.get(current_frame.offset + var_ref.0) {
+            Some(LocalVar::OnStack(val)) => Ok(val),
+            Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get(*heap_ref)),
+            None => Err(VMError::LocalResolutionBug { var_ref }),
+        }
 
     }
 
-    fn set_local(&mut self, var_ref: usize, val: LoxVal) -> Result<(), VMError> {
-        self.stack[var_ref].val = val;
-        Ok(())
-    }
-
-    /// Reads every instruction of a function, to modify accesses to
-    /// closed-over variables, into a Get/SetUpval instruction.
-    fn resolve_closure(&mut self, closure_ref: Ref<Closure>) {
-        /*
-        let mut closure = self.functions.get(closure_ref);
-        let current_frame = self.call_frames.len();
-        for instr in closure.chunk.0.iter_mut() {
-            match &mut instr.op {
-                OpCode::GetLocal(var) if var.frame != current_frame => {
-                    let upval_idx = self.register_upval(var);
-                    instr.op = OpCode::GetUpval(upval_idx);
-                }
-                OpCode::SetLocal(var) if var.frame != current_frame  => {
-                    let upval_idx = self.register_upval(var);
-                    instr.op = OpCode::SetUpval(upval_idx);
-                }
-                OpCode::Closure(f) => {
-                    self.resolve_closure(*f);
-                    instr.op = OpCode::Closure(f.clone());
-                }
-                _ => continue,
+    fn set_local(&mut self, var_ref: RelativeStackIdx, val: LoxVal) -> Result<(), VMError> {
+        let current_frame_offset = self.get_current_frame()?.offset;
+        match self.stack.get_mut(current_frame_offset + var_ref.0) {
+            Some(var@LocalVar::OnStack(_)) => {
+                *var = LocalVar::OnStack(val);
+                Ok(())
             }
-        }
-        */
-        todo!()
-    }
-
-    /// Registers a new UpVal, the index of the upval returned.
-    fn register_upval(&mut self, var_ref: usize) -> usize {
-        self.ref_resolver.push(
-            RefStatus::OnStack(var_ref)
-        );
-        let upval_idx = self.ref_resolver.len() - 1;
-        self.stack[var_ref].upval_idx = Some(upval_idx);
-        upval_idx
-    }
-
-    /// Reads the variable with the upval index, from the stack or the heap.
-    fn read_upval(&self, ref_idx: usize) -> LoxVal {
-        match &self.ref_resolver[ref_idx] {
-            RefStatus::OnStack(idx) => self.stack[*idx].val.clone(),
-            RefStatus::OnHeap(value) => value.clone(),
+            Some(LocalVar::OnHeap(heap_ref)) => {
+                *self.heap.get_mut(*heap_ref) = val;
+                Ok(())
+            }
+            None => Err(VMError::LocalResolutionBug { var_ref }),
         }
     }
 
-    /// Sets the variable with the upval index, on the stack or the heap.
-    fn set_upval(&mut self, ref_idx: usize, val: LoxVal) {
-        match self.ref_resolver.get_mut(ref_idx).unwrap() {
-            RefStatus::OnStack(idx) => self.stack[*idx].val = val,
-            v@RefStatus::OnHeap(_) => *v = RefStatus::OnHeap(val),
+    fn register_upval(&mut self, heap_ref: Ref<LoxVal>) -> Result<(), VMError> {
+        match self.pop_val()? {
+            LoxVal::Closure(c) => {
+                self.closures.get_mut(c).upvalues.push(heap_ref);
+                self.push_val(LoxVal::Closure(c));
+                Ok(())
+            }
+            LoxVal::Bool(_)
+            | LoxVal::Nil
+            | LoxVal::Num(_)
+            | LoxVal::Str(_)
+            | LoxVal::NativeFn(_)
+            | LoxVal::Class(_)
+            | LoxVal::Instance(_) => Err(VMError::UpvalueRegistrationBug),
         }
     }
 
-    fn get_called_fn(&self, n_args: u8) -> Result<Callable, VMError> {
-        let last_arg_idx = self.stack.len() - 1;
-        let fn_idx = last_arg_idx - n_args as usize;
-        match self.stack.get(fn_idx).map(|x| x.val.clone()) {
-            Some(LoxVal::Closure(f)) => Ok(Callable::Closure(f)),
-            Some(LoxVal::NativeFn(f)) => Ok(Callable::NativeFn(f)),
-            Some(LoxVal::Class(cls)) => Ok(Callable::Class(cls)),
-            Some(other) => Err(VMError::TypeError {
-                line: 0,
-                expected: "callable".to_string(),
-                got: other.type_name(),
-                details: "can't call non-function".to_string(),
-            }),
-            None => Err(VMError::StackExhausted {
-                line: 0,
-                details: String::from("stack exhausted trying to get the function being called."),
-            }),
+    fn move_to_heap(&mut self, stack_pos: RelativeStackIdx) -> Result<Ref<LoxVal>, VMError> {
+        let val = self.get_local(stack_pos)?.clone();
+        let heap_ref = self.heap.insert(val);
+        let current_frame_offset = self.get_current_frame()?.offset;
+        match self.stack.get_mut(current_frame_offset + stack_pos.0) {
+            Some(x) => {
+                *x = LocalVar::OnHeap(heap_ref);
+                Ok(heap_ref)
+            },
+            None => Err(VMError::LocalResolutionBug { var_ref: stack_pos })
         }
     }
 
@@ -261,16 +241,17 @@ impl VM {
                     };
                     match self.pop_val()? {
                         LoxVal::Closure(closure_ref) => {
-                            let f = self.closures.get(closure_ref);
-                            if f.arity != n_args {
+                            let closure = self.closures.get(closure_ref);
+                            let function = self.functions.get(closure.function);
+                            if function.arity != n_args {
                                 return Err(VMError::IncorrectArgCount {
-                                    expected: f.arity,
+                                    expected: function.arity,
                                     got: n_args,
                                     line: 0
                                 });
                             }
                             self.call_frames.push(CallFrame {
-                                function: closure_ref,
+                                closure: closure_ref,
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
                             });
@@ -278,6 +259,24 @@ impl VM {
                         _ => unreachable!("aaa"),
                     };
                     continue;
+                },
+
+                OpCode::CaptureUpvalue(upvalue) => {
+                    match upvalue {
+                        Upvalue::Local(stack_pos) => {
+                            let heap_ref = self.move_to_heap(stack_pos)?;
+                            self.register_upval(heap_ref)?;
+                        },
+                        Upvalue::Parent(upval_idx) => {
+                            let closure_ref = self.get_current_frame()?.closure;
+                            let closure = self.closures.get(closure_ref);
+                            let heap_ref = match closure.upvalues.get(upval_idx) {
+                                Some(heap_ref) => heap_ref,
+                                None => return Err(VMError::UpvalueCaptureBug),
+                            };
+                            self.register_upval(*heap_ref)?;
+                        }
+                    }
                 },
 
                 OpCode::Class(name) => {
@@ -290,9 +289,15 @@ impl VM {
                     self.push_val(LoxVal::Class(class_ref));
                 }
 
-                OpCode::Closure(f) => {
-                    self.resolve_closure(f);
-                    self.push_val(LoxVal::Closure(f));
+                OpCode::Closure(function) => {
+                    let closure = Closure {
+                        function,
+                        sup: None,
+                        this: None,
+                        upvalues: Vec::new(),
+                    };
+                    let closure_ref = self.closures.insert(closure);
+                    self.push_val(LoxVal::Closure(closure_ref));
                 }
 
                 OpCode::Constant(c) => self.push_val(c.clone()),
@@ -350,48 +355,11 @@ impl VM {
                 }
 
                 OpCode::GetLocal(var_ref) => {
-                    match self.get_local(var_ref)? {
-                        Some(val) => self.push_val(val.clone()),
-                        None => return Err(VMError::LocalResolutionBug {
-                            var_ref,
-                        }),
-                    }
+                    let val = self.get_local(var_ref)?;
+                    self.push_val(val.clone());
                 }
                 OpCode::GetSuperMethod(var_ref, name) => {
-                    let supercls_ref = match self.get_local(var_ref)? {
-                        Some(LoxVal::Class(val)) => val,
-                        Some(LoxVal::Nil) => return Err(VMError::SuperNoSuper),
-                        Some(_) => return Err(VMError::Bug(
-                            "error getting super".to_string()
-                        )),
-                        None => return Err(VMError::LocalResolutionBug {
-                            var_ref,
-                        }),
-                    };
-                    let supercls = self.classes.get(*supercls_ref);
-                    let this_pos = var_ref - 1;
-                    let this = match self.get_local(this_pos)? {
-                        Some(LoxVal::Instance(r)) => r,
-                        _ => return Err(VMError::Bug(
-                            "Error getting this".to_string(),
-                        )),
-                    };
-                    let meth_name = self.strings.get(name);
-                    match supercls.methods.get(meth_name) {
-                        Some(f) => {
-                            let f_closure = self.closures.get(*f).clone();
-                            let method = Closure {
-                                this: Some(*this),
-                                sup: supercls.sup,
-                                ..f_closure
-                            };
-                            let meth_ref = self.closures.insert(method);
-                            self.push_val(LoxVal::Closure(meth_ref));
-                        }
-                        None => return Err(VMError::UndefinedProperty {
-                            prop_name: meth_name.clone(),
-                        }),
-                    }
+                    todo!();
                 }
 
                 OpCode::GetProperty(prop_name_ref) => {
@@ -431,7 +399,12 @@ impl VM {
                 }
 
                 OpCode::GetUpval(upval_idx) => {
-                    self.push_val(self.read_upval(upval_idx))
+                    let current_frame = self.get_current_frame()?;
+                    let current_closure = self.closures.get(current_frame.closure);
+                    match current_closure.upvalues.get(upval_idx).map(|upval| self.heap.get(*upval)) {
+                        Some(val) => self.push_val(val.clone()),
+                        None => return Err(VMError::UpvalueResolutionBug),
+                    };
                 }
 
                 OpCode::GT => match (self.pop_val()?, self.pop_val()?) {
@@ -624,7 +597,17 @@ impl VM {
                     self.push_val(val);
                 }
 
-                OpCode::SetUpval(upval_idx) => self.set_upval(upval_idx, self.peek(0)?.clone()),
+                OpCode::SetUpval(upval_idx) => {
+                    let new_val = self.pop_val()?;
+                    let current_frame = self.get_current_frame()?;
+                    let current_closure = self.closures.get(current_frame.closure);
+                    match current_closure.upvalues.get(upval_idx).map(|upval| self.heap.get_mut(*upval)) {
+                        Some(var) => {
+                            *var = new_val;
+                        },
+                        None => return Err(VMError::UpvalueResolutionBug),
+                    };
+                }
 
                 OpCode::Substract => match (self.pop_val()?, self.pop_val()?) {
                     (Num(r), Num(l)) => self.push_val(Num(l-r)),
@@ -645,7 +628,11 @@ impl VM {
 
                 OpCode::Return => {
                     if self.call_frames.len() == 1 {
-                        let last = self.stack.pop().map(|x| x.val).unwrap_or(self.last_val.clone());
+                        let last = match self.stack.pop() {
+                            Some(LocalVar::OnStack(v)) => v,
+                            Some(LocalVar::OnHeap(heap_ref)) => self.heap.get(heap_ref).clone(),
+                            None => self.last_val.clone(),
+                        };
                         return Ok(match last {
                             Bool(b) => OwnedLoxVal::Bool(b),
                             Nil => OwnedLoxVal::Nil,
@@ -686,7 +673,8 @@ impl VM {
 
     fn pop_val(&mut self) -> Result<LoxVal, VMError> {
         match self.stack.pop() {
-            Some(v) => Ok(v.val),
+            Some(LocalVar::OnStack(v)) => Ok(v),
+            Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get(heap_ref).clone()),
             _ => Err(VMError::StackExhausted {
                 line: 0,
                 details: "tried to pop_val() but stack is empty".to_string(),
@@ -695,17 +683,13 @@ impl VM {
     }
 
     fn pop_var(&mut self) {
-        match self.stack.pop() {
-            Some(LocalVar { upval_idx: Some(idx), val }) => {
-                self.ref_resolver[idx] = RefStatus::OnHeap(val);
-            }
-            _ => (),
-        }
+        self.stack.pop();
     }
 
     fn peek(&self, depth: usize) -> Result<&LoxVal, VMError> {
-        match self.stack.get(self.stack.len() - 1 - depth) {
-            Some(v) => Ok(&v.val),
+        match self.stack.last() {
+            Some(LocalVar::OnStack(v)) => Ok(&v),
+            Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get(*heap_ref)),
             None => Err(VMError::StackExhausted {
                 line: 0,
                 details: format!(
@@ -723,10 +707,10 @@ impl VM {
     ) -> Result<(), VMError> {
         let frame_end = self.stack.len();
         let frame_start = frame_end - n_args as usize;
-        let args: Vec<LoxVal> = self.stack[frame_start..frame_end]
-            .iter()
-            .map(|x| x.val.clone())
-            .collect();
+        let mut args = Vec::new();
+        for _ in 0..n_args {
+            args.push(self.pop_val()?);
+        }
         let result = f(args.as_slice())?;
         self.stack.truncate(frame_start);
         self.push_val(result);

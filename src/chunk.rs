@@ -32,24 +32,32 @@ pub enum OwnedLoxVal {
     Instance(ClassInstance),
 }
 
-/// Represents functions, closures and methods.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Closure {
+pub struct CompiledFn {
     pub arity: u8,
     pub chunk: Chunk,
     pub name: Ref<String>,
+}
+
+/// Represents functions, closures and methods.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Closure {
+    pub function: Ref<CompiledFn>,
+
+    /// idx of every instruction that closes over a local variable
+    pub upvalues: Vec<Ref<LoxVal>>,
 
     /// `None` unless it's a method.
     pub this: Option<Ref<ClassInstance>>,
 
     /// `None` unless it's a method from a class with a superclass.
     pub sup: Option<Ref<Class>>,
+}
 
-    /// idx of every instruction that closes over a local variable
-    pub upval_idx: Vec<usize>,
-
-    /// Stores the index of every `Closure` defined in the body of this one.
-    pub child_closures: Option<Vec<Ref<Closure>>>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Upvalue {
+    Local(RelativeStackIdx),
+    Parent(usize),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -111,6 +119,12 @@ impl LoxVal {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RelativeStackIdx(pub usize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChunkIndex(pub usize);
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Add,
@@ -120,17 +134,19 @@ pub enum OpCode {
     /// and the values before that the rest of the arguments.
     /// The function (top of stack) will be popped by this instruction.
     Call(u8),
+
+    CaptureUpvalue(Upvalue),
     Constant(LoxVal),
     Class(Ref<String>),
-    Closure(Ref<Closure>),
+    Closure(Ref<CompiledFn>),
     DefineClass(Ref<String>),
     DefineGlobal(Ref<String>),
     Divide,
     Equal,
     GetProperty(Ref<String>),
     GetGlobal(Ref<String>),
-    GetLocal(usize),
-    GetSuperMethod(usize, Ref<String>),
+    GetLocal(RelativeStackIdx),
+    GetSuperMethod(RelativeStackIdx, Ref<String>),
     GetUpval(usize),
     GE,
     GT,
@@ -150,7 +166,7 @@ pub enum OpCode {
     Return,
     SetProperty(Ref<String>),
     SetGlobal(Ref<String>),
-    SetLocal(usize),
+    SetLocal(RelativeStackIdx),
     SetUpval(usize),
     Substract,
 }
@@ -161,7 +177,7 @@ pub struct Instruction {
     pub line: u64,
 }
 
-pub type Chunk =  Vec<Instruction>;
+pub type Chunk = Vec<Instruction>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FnType {

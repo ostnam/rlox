@@ -573,7 +573,6 @@ fn test_functions() {
     );
 }
 
-/*
 #[test]
 fn test_closures() {
     assert_eq!(
@@ -581,9 +580,9 @@ fn test_closures() {
             var x = "global";
             fun outer() {
                 var x = "outer";
-                    fun inner() {
-                        return x;
-                    }
+                fun inner() {
+                    return x;
+                }
                 return inner();
             }
             outer();
@@ -646,13 +645,14 @@ fn test_closures() {
             }
             inner();
             return x;
-            }
+        }
         outer();
         "#),
         Ok(OwnedLoxVal::Str("assigned".to_string())),
     );
 }
 
+/*
 #[test]
 fn test_classes() {
     assert_matches!(

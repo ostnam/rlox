@@ -24,9 +24,9 @@ pub struct VarDecl {
 /// In the bytecode and at runtime, functions are represented by `Closures`
 #[derive(PartialEq, Debug)]
 pub struct Function {
+    pub name: Ref<String>,
     pub args: Vec<Ref<String>>,
     pub body: Block,
-    pub name: Ref<String>,
 }
 
 pub type Block = Vec<Declaration>;
@@ -108,12 +108,12 @@ pub enum BinaryOperator {
 #[derive(PartialEq, Debug)]
 pub enum Primary {
     Bool(bool),
+    Name(Ref<String>),
     Nil,
-    This,
     Num(f64),
     Str(Ref<String>),
-    Name(Ref<String>),
     Super,
+    This,
 }
 
 pub trait AsOpcode {
