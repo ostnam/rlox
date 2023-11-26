@@ -1,14 +1,14 @@
-use crate::chunk::LoxVal;
+use crate::chunk::OwnedLoxVal;
+use crate::compiler::Compiler;
+use crate::parser::Parser;
 use crate::vm::{VMError, VM};
 
-pub fn run_program(src: &str) -> Result<LoxVal, VMError> {
-    /*
-    let chunk = Parser::new(src)
+pub fn run_program(src: &str) -> Result<OwnedLoxVal, VMError> {
+    let ast = Parser::new(src)
         .unwrap()
         .parse()
         .unwrap();
+    let compiled = Compiler::compile(ast).unwrap();
 
-    VM::from(chunk).interpret()
-    */
-    Err(VMError::Bug("not implemented yet".to_string()))
+    VM::from(compiled).interpret()
 }
