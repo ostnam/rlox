@@ -256,6 +256,7 @@ impl VM {
                                 offset: self.stack.len() - n_args as usize,
                             });
                         }
+                        LoxVal::NativeFn(f) => self.apply_native(f, n_args)?,
                         _ => unreachable!("aaa"),
                     };
                     continue;
