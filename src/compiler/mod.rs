@@ -271,6 +271,11 @@ impl Compiler {
                 self.compile_expr(rhs);
                 self.emit_instr(op.as_opcode());
             },
+            Expr::Assignment { tgt: box Expr::Dot(obj, prop), val } => {
+                self.compile_expr(val);
+                self.compile_expr(obj);
+                self.emit_instr(OpCode::SetProperty(*prop));
+            },
             Expr::Assignment { tgt, val } => self.compile_assignment(tgt, val),
             Expr::Primary(Primary::Bool(b)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Bool(*b))),
@@ -292,7 +297,10 @@ impl Compiler {
             }
             Expr::And(lhs, rhs) => self.compile_and(lhs, rhs),
             Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs),
-            Expr::Dot(_, _) => todo!(),
+            Expr::Dot(lhs, rhs) => {
+                self.compile_expr(lhs);
+                self.emit_instr(OpCode::GetProperty(*rhs));
+            }
         }
     }
 

@@ -364,7 +364,7 @@ impl VM {
                 }
 
                 OpCode::GetProperty(prop_name_ref) => {
-                    let inst_ref = match self.peek(0)? {
+                    let inst_ref = match self.pop_val()? {
                         LoxVal::Instance(r) => r.clone(),
                         other => return Err(VMError::TypeError {
                             line: 0,
@@ -373,7 +373,6 @@ impl VM {
                             details: "can only read properties of class instances".to_string(),
                         }),
                     };
-                    self.pop_var();
                     let inst = self.instances.get(inst_ref);
                     let cls = self.classes.get(inst.class);
                     let prop_name = self.strings.get(prop_name_ref);
@@ -582,7 +581,7 @@ impl VM {
                 }
 
                 OpCode::SetProperty(prop_name_ref) => {
-                    let inst = match self.peek(1)? {
+                    let inst = match self.pop_val()? {
                         LoxVal::Instance(v) => v.clone(),
                         other => return Err(VMError::TypeError {
                             line: 0,
@@ -592,7 +591,6 @@ impl VM {
                         }),
                     };
                     let val = self.pop_val()?;
-                    self.pop_val()?;
                     let prop_name = self.strings.get(prop_name_ref);
                     self.instances.get_mut(inst).fields.insert(prop_name.clone(), val.clone());
                     self.push_val(val);
