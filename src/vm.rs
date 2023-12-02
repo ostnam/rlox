@@ -359,7 +359,7 @@ impl VM {
                     let val = self.get_local(var_ref)?;
                     self.push_val(val.clone());
                 }
-                OpCode::GetSuperMethod(var_ref, name) => {
+                OpCode::GetSuperMethod(var_ref) => {
                     todo!();
                 }
 
