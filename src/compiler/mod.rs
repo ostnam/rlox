@@ -150,13 +150,13 @@ impl Compiler {
                     self.emit_instr(OpCode::Inherit);
                 }
                 for method in methods {
-                    self.compile_method(method);
+                    self.compile_function(method, true);
                 }
                 if self.resolver.current_scope_depth() == 0 {
                     self.emit_instr(OpCode::Pop);
                 }
             },
-            Declaration::Fun(f) => self.compile_function(&f),
+            Declaration::Fun(f) => self.compile_function(&f, false),
             Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
             Declaration::Var(var_decl) => self.compile_var_decl(var_decl),
         }
@@ -401,21 +401,16 @@ impl Compiler {
         }
     }
 
-    /// Compiles a method.
-    fn compile_method(&mut self, method: &Function) {
-        /*
-        let meth = self.functions.get(method);
-        let compiled_fn = self.compile_function(meth);
-        self.emit_instr(OpCode::Method(compiled_fn));
-        */
-    }
-
     /// Compiles a function.
-    fn compile_function(&mut self, f: &Function) {
+    fn compile_function(
+        &mut self,
+        f: &Function,
+        is_method: bool,
+    ) {
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
         // the name resolves properly.
-        if self.resolver.current_scope_depth() > 0 {
+        if !is_method && self.resolver.current_scope_depth() > 0 {
             if let Err(e) = self.resolver.declare_local(&self.strings, f.name) {
                 self.emit_err(&e.to_string());
             }
@@ -439,6 +434,12 @@ impl Compiler {
         let parent_closure = std::mem::replace(&mut self.current_closure, new_closure_ref);
         let grandparent_closure = std::mem::replace(&mut self.current_parent_closure, Some(parent_closure));
         let scope = self.resolver.begin_fn_scope(&self.strings, &f.args);
+        if is_method {
+            if let Err(e) = self.resolver.declare_local(&self.strings, self.this) {
+                self.emit_err(&format!("BUG when compiling method declaration, {e}"));
+            }
+            self.resolver.init_last_local();
+        }
         let old_fn_type = std::mem::replace(&mut self.current_closure_type, FnType::Regular);
         for decl in &f.body {
             self.compile_decl(decl);
@@ -454,7 +455,10 @@ impl Compiler {
         let parent_closure = std::mem::replace(&mut self.current_parent_closure, grandparent_closure).unwrap();
         self.current_closure = parent_closure;
         self.current_closure_type = old_fn_type;
-        if self.resolver.current_scope_depth() > 0 {
+        if is_method {
+            self.emit_instr(OpCode::Closure(new_closure_ref));
+            self.emit_instr(OpCode::Method(f.name));
+        } else if self.resolver.current_scope_depth() > 0 {
             self.emit_instr(OpCode::Closure(new_closure_ref));
             for upvalue in captured {
                 self.emit_instr(OpCode::CaptureUpvalue(upvalue));
