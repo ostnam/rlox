@@ -231,7 +231,7 @@ impl VM {
                     }),
                 }
 
-                OpCode::Call(n_args) => {
+                OpCode::Call(mut n_args) => {
                     self.increment_ip()?;
                     match self.pop_val()? {
                         LoxVal::Closure(closure_ref) => {
@@ -243,6 +243,10 @@ impl VM {
                                     got: n_args,
                                     line: 0
                                 });
+                            }
+                            if let Some(this) = closure.this {
+                                self.push_val(LoxVal::Instance(this));
+                                n_args += 1;
                             }
                             self.call_frames.push(CallFrame {
                                 closure: closure_ref,
@@ -265,7 +269,7 @@ impl VM {
                                 self.call_frames.push(CallFrame {
                                     closure: *init,
                                     ip: 0,
-                                    offset: self.stack.len(),
+                                    offset: self.stack.len() - n_args as usize,
                                     kind: FnType::Ctor,
                                 });
                                 self.push_val(LoxVal::Instance(inst_ref));
