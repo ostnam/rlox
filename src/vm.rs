@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::arena::{Arena, Ref};
-use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue};
+use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue, new_class_instance, FnType};
 use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, ClassInstance, Closure};
 use crate::compiler::CompilationResult;
 
@@ -33,10 +33,10 @@ struct CallFrame {
     /// Index of the function in the VM functions field.
     closure: Ref<Closure>,
     ip: usize,
-    /// Index of the stack where the frame starts
-    /// when calling a function, the value of the function being called is
-    /// placed immediately before this index.
+    /// Index of the stack where the frame starts, == index
+    /// where the first arg should be.
     offset: usize,
+    kind: FnType,
 }
 
 impl From<CompilationResult> for VM {
@@ -54,7 +54,12 @@ impl From<CompilationResult> for VM {
             globals: HashMap::new(),
             last_val: LoxVal::Nil,
             call_frames: vec![
-                CallFrame { closure: main_closure_ref, ip: 0, offset: 0 }
+                CallFrame {
+                    closure: main_closure_ref,
+                    ip: 0,
+                    offset: 0,
+                    kind: FnType::Main,
+                }
             ],
             heap: Arena::new(),
             functions: main.closures,
@@ -100,15 +105,15 @@ pub enum VMError {
     UpvalueResolutionBug,
     UpvalueCaptureBug,
     UpvalueRegistrationBug,
+    ArgsButNoInit,
 }
 
 impl VM {
-    fn get_current_instr(&self) -> Result<Option<Instruction>, VMError> {
-        let current_fn = self.call_frames[self.call_frames.len() - 1].closure.clone();
-        let ip = self.get_current_frame()?.ip;
-        let fn_ref = self.closures.get(current_fn).function;
-        let chunk = &self.functions.get(fn_ref).chunk;
-        Ok(chunk.get(ip).cloned())
+    fn get_current_instr(&self) -> Result<Instruction, VMError> {
+        let current_frame = self.get_current_frame()?;
+        let current_closure = self.closures.get(current_frame.closure);
+        let chunk = &self.functions.get(current_closure.function).chunk;
+        chunk.get(current_frame.ip).cloned().ok_or(VMError::EndedWithNoReturn)
     }
 
     fn set_ip(&mut self, tgt: usize) -> Result<(), VMError> {
@@ -123,8 +128,7 @@ impl VM {
     }
 
     fn increment_ip(&mut self) -> Result<(), VMError> {
-        let last_frame_idx = self.call_frames.len() - 1;
-        match self.call_frames.get_mut(last_frame_idx) {
+        match self.call_frames.last_mut() {
             Some(frame) => {
                 frame.ip += 1;
                 Ok(())
@@ -135,14 +139,6 @@ impl VM {
 
     fn get_current_frame(&self) -> Result<&CallFrame, VMError> {
         match self.call_frames.last() {
-            Some(frame) => Ok(frame),
-            None => Err(VMError::IncorrectCurrentFunction),
-        }
-    }
-
-    fn get_current_frame_mut(&mut self) -> Result<&mut CallFrame, VMError> {
-        let last_frame_idx = self.call_frames.len() - 1;
-        match self.call_frames.get_mut(last_frame_idx) {
             Some(frame) => Ok(frame),
             None => Err(VMError::IncorrectCurrentFunction),
         }
@@ -204,7 +200,8 @@ impl VM {
     }
 
     pub fn interpret(&mut self) -> Result<OwnedLoxVal, VMError> {
-        while let Some(instr) = self.get_current_instr()? {
+        loop {
+            let instr = self.get_current_instr()?;
             match instr.op {
                 OpCode::Add => match (self.pop_val()?, self.pop_val()?) {
                     (Num(r), Num(l)) => self.push_val(Num(l+r)),
@@ -235,10 +232,7 @@ impl VM {
                 }
 
                 OpCode::Call(n_args) => {
-                    match self.call_frames.last_mut() {
-                        Some(frame) => frame.ip += 1,
-                        None => (),
-                    };
+                    self.increment_ip()?;
                     match self.pop_val()? {
                         LoxVal::Closure(closure_ref) => {
                             let closure = self.closures.get(closure_ref);
@@ -254,9 +248,34 @@ impl VM {
                                 closure: closure_ref,
                                 ip: 0,
                                 offset: self.stack.len() - n_args as usize,
+                                kind: FnType::Regular,
                             });
                         }
                         LoxVal::NativeFn(f) => self.apply_native(f, n_args)?,
+                        LoxVal::Class(class_ref) => {
+                            let class = self.classes.get(class_ref);
+                            let sup = class.sup;
+                            let inst = new_class_instance(class_ref);
+                            let inst_ref = self.instances.insert(inst);
+                            let init = class.methods.get(&"init".to_string());
+                            if init.is_some() && n_args > 0 {
+                                return Err(VMError::ArgsButNoInit);
+                            }
+                            if let Some(init) = init {
+                                self.call_frames.push(CallFrame {
+                                    closure: *init,
+                                    ip: 0,
+                                    offset: self.stack.len(),
+                                    kind: FnType::Ctor,
+                                });
+                                self.push_val(LoxVal::Instance(inst_ref));
+                                if let Some(sup) = sup {
+                                    self.push_val(LoxVal::Class(sup));
+                                }
+                            } else {
+                                self.push_val(LoxVal::Instance(inst_ref));
+                            }
+                        },
                         _ => unreachable!("aaa"),
                     };
                     continue;
@@ -589,8 +608,9 @@ impl VM {
                 }
 
                 OpCode::SetProperty(prop_name_ref) => {
+                    let val = self.pop_val()?;
                     let inst = match self.pop_val()? {
-                        LoxVal::Instance(v) => v.clone(),
+                        LoxVal::Instance(v) => v,
                         other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "instance".to_string(),
@@ -598,7 +618,6 @@ impl VM {
                             details: "can only set properties on class instances".to_string(),
                         }),
                     };
-                    let val = self.pop_val()?;
                     let prop_name = self.strings.get(prop_name_ref);
                     self.instances.get_mut(inst).fields.insert(prop_name.clone(), val.clone());
                     self.push_val(val);
@@ -634,43 +653,49 @@ impl VM {
 
 
                 OpCode::Return => {
-                    if self.call_frames.len() == 1 {
-                        let last = match self.stack.pop() {
-                            Some(LocalVar::OnStack(v)) => v,
-                            Some(LocalVar::OnHeap(heap_ref)) => self.heap.get(heap_ref).clone(),
-                            None => self.last_val.clone(),
-                        };
-                        return Ok(match last {
-                            Bool(b) => OwnedLoxVal::Bool(b),
-                            Nil => OwnedLoxVal::Nil,
-                            Num(n) => OwnedLoxVal::Num(n),
-                            Str(s) => OwnedLoxVal::Str(
-                                self.strings.get(s).clone()
-                            ),
-                            LoxVal::Closure(c) => OwnedLoxVal::Closure(
-                                self.closures.get(c).clone(),
-                            ),
-                            NativeFn(f) => OwnedLoxVal::NativeFn(f),
-                            LoxVal::Class(c) => OwnedLoxVal::Class(
-                                self.classes.get(c).clone()
-                            ),
-                            Instance(i) => OwnedLoxVal::Instance(
-                                self.instances.get(i).clone()
-                            ),
-                        });
-                    }
-                    let result = self.pop_val().unwrap();
                     let old_frame = self.call_frames.pop().unwrap();
-                    self.stack.truncate(old_frame.offset);
-                    self.push_val(result);
-                    continue;
+                    match old_frame.kind {
+                        FnType::Main => {
+                            let last = match self.stack.pop() {
+                                Some(LocalVar::OnStack(v)) => v,
+                                Some(LocalVar::OnHeap(heap_ref)) => self.heap.get(heap_ref).clone(),
+                                None => self.last_val.clone(),
+                            };
+                            return Ok(match last {
+                                Bool(b) => OwnedLoxVal::Bool(b),
+                                Nil => OwnedLoxVal::Nil,
+                                Num(n) => OwnedLoxVal::Num(n),
+                                Str(s) => OwnedLoxVal::Str(
+                                    self.strings.get(s).clone()
+                                ),
+                                LoxVal::Closure(c) => OwnedLoxVal::Closure(
+                                    self.closures.get(c).clone(),
+                                ),
+                                NativeFn(f) => OwnedLoxVal::NativeFn(f),
+                                LoxVal::Class(c) => OwnedLoxVal::Class(
+                                    self.classes.get(c).clone()
+                                ),
+                                Instance(i) => OwnedLoxVal::Instance(
+                                    self.instances.get(i).clone()
+                                ),
+                            });
+                        },
+                        FnType::Ctor => {
+                            self.stack.truncate(old_frame.offset + 1);
+                        },
+                        FnType::Regular => {
+                            let result = self.pop_val()?;
+                            self.stack.truncate(old_frame.offset);
+                            self.push_val(result);
+                        }
+                        FnType::Method => todo!(),
+                    }
+                    continue; // to not increment the IP twice
                 }
             }
 
             self.increment_ip()?;
         };
-
-        Err(VMError::EndedWithNoReturn)
     }
 
     fn push_val(&mut self, val: LoxVal) {

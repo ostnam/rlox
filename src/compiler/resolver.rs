@@ -145,7 +145,7 @@ impl Resolver {
         name: Ref<String>,
     ) -> Option<(usize, RelativeStackIdx)> {
         for (stack_pos, var) in self.locals.iter().enumerate() {
-            if !refs_eql!(str_arena, name, var.name) {
+            if !refs_eql!(str_arena, var.name, name) {
                 continue;
             }
             for (scope_idx, scope) in self.scopes.iter().enumerate().rev() {

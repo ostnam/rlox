@@ -21,6 +21,9 @@ pub struct Compiler {
 
     current_line: u64,
     had_error: bool,
+
+    this: Ref<String>,
+    super_: Ref<String>,
 }
 
 #[derive(Debug)]
@@ -73,8 +76,11 @@ impl Compiler {
             name,
         };
         let main_ref = closures.insert(main);
-        let mut compiler = Self {
-            strings: input.strings,
+        let mut strings = input.strings;
+        let this = strings.insert("this".to_string());
+        let super_ = strings.insert("super".to_string());
+        let compiler = Self {
+            strings,
             closures,
             resolver: Resolver::default(),
             current_closure: main_ref,
@@ -82,6 +88,8 @@ impl Compiler {
             current_parent_closure: None,
             current_line: 0,
             had_error: false,
+            this,
+            super_,
         };
         compiler.run_compilation(input.program)
     }
@@ -281,8 +289,17 @@ impl Compiler {
             Expr::Primary(Primary::Str(s)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Str(*s))),
             Expr::Primary(Primary::Name(name)) => self.compile_read_var(*name),
-            Expr::Primary(Primary::This)
-            | Expr::Primary(Primary::Super) => todo!(),
+            Expr::Primary(Primary::This) => match self.resolver.resolve(&self.strings, self.this) {
+                    Some(StackRef::Local(idx)) => self.emit_instr(OpCode::GetLocal(idx)),
+                    Some(StackRef::Upval(idx)) => self.emit_instr(OpCode::GetUpval(idx)),
+                    None => self.emit_err("used keyword 'this' outside of method"),
+            },
+            Expr::Primary(Primary::Super) =>
+                match self.resolver.resolve(&self.strings, self.this) {
+                    Some(StackRef::Local(idx)) => self.emit_instr(OpCode::GetLocal(idx)),
+                    Some(StackRef::Upval(idx)) => self.emit_instr(OpCode::GetUpval(idx)),
+                    None => self.emit_err("used keyword 'super' outside of method"),
+                },
             Expr::Call { lhs, args } => {
                 for arg in args {
                     self.compile_expr(arg);
