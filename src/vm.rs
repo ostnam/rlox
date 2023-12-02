@@ -258,7 +258,7 @@ impl VM {
                             let inst = new_class_instance(class_ref);
                             let inst_ref = self.instances.insert(inst);
                             let init = class.methods.get(&"init".to_string());
-                            if init.is_some() && n_args > 0 {
+                            if init.is_none() && n_args > 0 {
                                 return Err(VMError::ArgsButNoInit);
                             }
                             if let Some(init) = init {

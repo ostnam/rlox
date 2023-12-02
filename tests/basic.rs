@@ -690,6 +690,18 @@ fn test_classes() {
         "#),
         Ok(OwnedLoxVal::Num(1.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            class C {
+                init() {
+                    this.x = 10;
+                }
+            }
+            var c = C();
+            c.x + 5;
+        "#),
+        Ok(OwnedLoxVal::Num(15.0)),
+    );
     assert_matches!(
         common::run_program(r#"
             class C {
@@ -715,14 +727,15 @@ fn test_classes() {
     assert_eq!(
         common::run_program(r#"
             class C {
-                init() {
-                    this.x = 10;
+                f() {
+                    var old = this.x;
+                    return old;
                 }
             }
-            var c = C();
-            c.x + 5;
+            var c = C(10);
+            c.f() + 5;
         "#),
-        Ok(OwnedLoxVal::Num(15.0)),
+        Err(VMError::ArgsButNoInit),
     );
     assert_eq!(
         common::run_program(r#"
