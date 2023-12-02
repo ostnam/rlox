@@ -239,8 +239,11 @@ impl Compiler {
                 // The VM pops the value that is printed.
             },
             Stmt::Return(expr) => {
-                if let FnType::Main | FnType::Ctor = self.current_closure_type {
-                    self.emit_err("can't use return statement in this context");
+                match self.current_closure_type {
+                    FnType::Main
+                    | FnType::Ctor => self.emit_err("can't use return statement in this context"),
+                    FnType::Method
+                    | FnType::Regular => (),
                 }
                 match expr {
                     Some(expr) => self.compile_expr(expr),
