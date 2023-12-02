@@ -652,7 +652,6 @@ fn test_closures() {
     );
 }
 
-/*
 #[test]
 fn test_classes() {
     assert_matches!(
@@ -661,14 +660,14 @@ fn test_classes() {
             C;
         "#),
         Ok(OwnedLoxVal::Class(_)),
-    ));
+    );
     assert_matches!(
         common::run_program(r#"
             class C {}
             var x = C();
         "#),
         Ok(OwnedLoxVal::Instance(_)),
-    ));
+    );
     assert_eq!(
         common::run_program(r#"
             class C {}
@@ -699,8 +698,8 @@ fn test_classes() {
             var x = C();
             x.f;
         "#),
-        Ok(OwnedLoxVal::BoundMethod(_)),
-    ));
+        Ok(OwnedLoxVal::Closure(_)),
+    );
     assert_eq!(
         common::run_program(r#"
             class C {
@@ -858,4 +857,3 @@ fn test_classes() {
         Ok(OwnedLoxVal::Num(55.0)),
     );
 }
-*/
