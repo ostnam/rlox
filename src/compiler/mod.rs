@@ -472,8 +472,12 @@ impl Compiler {
     fn end_scope(&mut self, id: ScopeId) {
         match self.resolver.end_scope(id) {
             Ok(num_to_pop) => {
-                for _ in 0..num_to_pop {
-                    self.emit_instr(OpCode::Pop);
+                if let Ok(u) = num_to_pop.try_into() {
+                    self.emit_instr(OpCode::PopN(u));
+                } else {
+                    for _ in 0..num_to_pop {
+                        self.emit_instr(OpCode::Pop);
+                    }
                 }
             }
             Err(e) => self.emit_err(&e.to_string()),

@@ -562,6 +562,12 @@ impl VM {
 
                 OpCode::Pop => self.pop_var(),
 
+                OpCode::PopN(n) => {
+                    for _ in 0..n {
+                        self.pop_val()?;
+                    }
+                },
+
                 OpCode::Print => println!("{:?}", self.pop_val()?),
 
                 OpCode::SetGlobal(name_ref) => {

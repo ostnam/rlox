@@ -162,6 +162,7 @@ pub enum OpCode {
     Not,
     NotEqual,
     Pop,
+    PopN(u8),
     Print,
     Return,
     SetProperty(Ref<String>),
