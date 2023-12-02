@@ -560,7 +560,9 @@ impl VM {
                     self.push_val(val);
                 }
 
-                OpCode::Pop => self.pop_var(),
+                OpCode::Pop => {
+                    self.pop_val()?;
+                },
 
                 OpCode::PopN(n) => {
                     for _ in 0..n {
@@ -685,10 +687,6 @@ impl VM {
                 details: "tried to pop_val() but stack is empty".to_string(),
             }),
         }
-    }
-
-    fn pop_var(&mut self) {
-        self.stack.pop();
     }
 
     fn peek(&self, depth: usize) -> Result<&LoxVal, VMError> {
