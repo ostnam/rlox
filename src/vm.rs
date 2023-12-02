@@ -684,10 +684,8 @@ impl VM {
                                 ),
                             });
                         },
-                        FnType::Ctor => {
-                            self.stack.truncate(old_frame.offset + 1);
-                        },
-                        FnType::Regular => {
+                        FnType::Regular
+                        | FnType::Ctor => {
                             let result = self.pop_val()?;
                             self.stack.truncate(old_frame.offset);
                             self.push_val(result);

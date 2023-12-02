@@ -238,12 +238,14 @@ impl Compiler {
                 self.emit_instr(OpCode::Print);
                 // The VM pops the value that is printed.
             },
+            Stmt::Return(Some(_)) if self.current_closure_type == FnType::Ctor => self.emit_err("can't return value from init"),
+            Stmt::Return(None) if self.current_closure_type == FnType::Ctor => self.emit_implicit_return(),
             Stmt::Return(expr) => {
                 match self.current_closure_type {
-                    FnType::Main
-                    | FnType::Ctor => self.emit_err("can't use return statement in this context"),
+                    FnType::Main => self.emit_err("can't use return statement in this context"),
                     FnType::Method
                     | FnType::Regular => (),
+                    FnType::Ctor => unreachable!("BUG: improper pattern matching for Stmt::Return in constructors"),
                 }
                 match expr {
                     Some(expr) => self.compile_expr(expr),
@@ -440,7 +442,12 @@ impl Compiler {
             }
             self.resolver.init_last_local();
         }
-        let old_fn_type = std::mem::replace(&mut self.current_closure_type, FnType::Regular);
+        let new_closure_type = match self.strings.get(f.name).as_str() {
+            "init" if is_method => FnType::Ctor,
+            _ if is_method => FnType::Method,
+            _ => FnType::Regular,
+        };
+        let old_fn_type = std::mem::replace(&mut self.current_closure_type, new_closure_type);
         for decl in &f.body {
             self.compile_decl(decl);
         }
@@ -471,7 +478,19 @@ impl Compiler {
     }
 
     fn emit_implicit_return(&mut self) {
-        self.emit_instr(OpCode::Constant(LoxVal::Nil));
+        match self.current_closure_type {
+            FnType::Regular
+            | FnType::Method => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
+            FnType::Ctor => {
+                if let Some(StackRef::Local(idx)) = self.resolver.resolve(&self.strings, self.this) {
+                self.emit_instr(OpCode::GetLocal(idx));
+                } else {
+                self.emit_err("BUG: this is not a local var");
+                }
+            }
+
+            FnType::Main => self.emit_err("BUG: emitting implicit return for main"),
+        };
         self.emit_instr(OpCode::Return);
     }
 
