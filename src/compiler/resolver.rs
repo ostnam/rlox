@@ -113,6 +113,10 @@ impl Resolver {
         );
     }
 
+    /// For a given name, if a variable with that name is available
+    /// on the stack, returns `Some(StackRef)`. `StackRef` can be used
+    /// as parameter to a {Get,Set}{Local,Upval} instruction.
+    /// If needed, register the upvalue in closures.
     pub fn resolve(
         &mut self,
         str_arena: &Arena<String>,
@@ -121,19 +125,34 @@ impl Resolver {
         match self.get_var_scope(str_arena, name) {
             Some((scope_idx, pos)) if self.same_fn_scope(scope_idx) =>
                 Some(StackRef::Local(pos)),
-            Some((scope_idx, r@RelativeStackIdx(pos))) => {
+
+            Some((scope_idx, r@RelativeStackIdx(_))) => {
+                // the variable was declared in an outer function scope.
+                // It needs to be declared as an upvalue in this scope,
+                // and all the intermediate ones.
                 let mut next_upval = Upvalue::Local(r);
+                let mut last_upval_idx = 0;
+
+                'scopes:
                 for scope in self.scopes[scope_idx + 1..].iter_mut() {
-                    match scope {
-                        Scope { kind: ScopeKind::Function(upvals), .. } => {
-                            upvals.push(next_upval);
-                            next_upval = Upvalue::Parent(upvals.len() - 1);
+                    // don't register upvals unless it's a function scope.
+                    if let Scope { kind: ScopeKind::Function(upvals), .. } = scope {
+                        // don't register the same upvalue twice
+                        for (idx, upval) in upvals.iter().enumerate() {
+                            if *upval == next_upval {
+                                next_upval = Upvalue::Parent(idx);
+                                last_upval_idx = idx;
+                                continue 'scopes;
+                            }
                         }
-                        _ => (),
+                        upvals.push(next_upval);
+                        last_upval_idx = upvals.len() - 1;
+                        next_upval = Upvalue::Parent(last_upval_idx);
                     }
                 }
-                Some(StackRef::Upval(pos))
-            },
+                Some(StackRef::Upval(last_upval_idx))
+            }
+
             None => None,
         }
     }
