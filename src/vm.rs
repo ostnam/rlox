@@ -280,7 +280,12 @@ impl VM {
                                 self.push_val(LoxVal::Instance(inst_ref));
                             }
                         },
-                        _ => unreachable!("aaa"),
+                        other => return Err(VMError::TypeError {
+                            line: instr.line,
+                            expected: "callable".to_string(),
+                            got: other.type_name(),
+                            details: "tried to call non callable value".to_string(),
+                        }),
                     };
                     continue;
                 },
