@@ -464,6 +464,9 @@ impl Compiler {
         self.current_closure_type = old_fn_type;
         if is_method {
             self.emit_instr(OpCode::Closure(new_closure_ref));
+            for upvalue in captured {
+                self.emit_instr(OpCode::CaptureUpvalue(upvalue));
+            }
             self.emit_instr(OpCode::Method(f.name));
         } else if self.resolver.current_scope_depth() > 0 {
             self.emit_instr(OpCode::Closure(new_closure_ref));
