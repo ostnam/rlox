@@ -473,7 +473,6 @@ impl Compiler {
             for upvalue in captured {
                 self.emit_instr(OpCode::CaptureUpvalue(upvalue));
             }
-            self.resolver.init_last_local();
         } else {
             self.emit_instr(OpCode::Closure(new_closure_ref));
             self.emit_instr(OpCode::DefineGlobal(new_closure_name));
