@@ -462,19 +462,14 @@ impl Compiler {
         let parent_closure = std::mem::replace(&mut self.current_parent_closure, grandparent_closure).unwrap();
         self.current_closure = parent_closure;
         self.current_closure_type = old_fn_type;
+
+        self.emit_instr(OpCode::Closure(new_closure_ref));
+        for upvalue in captured {
+            self.emit_instr(OpCode::CaptureUpvalue(upvalue));
+        }
         if is_method {
-            self.emit_instr(OpCode::Closure(new_closure_ref));
-            for upvalue in captured {
-                self.emit_instr(OpCode::CaptureUpvalue(upvalue));
-            }
             self.emit_instr(OpCode::Method(f.name));
-        } else if self.resolver.current_scope_depth() > 0 {
-            self.emit_instr(OpCode::Closure(new_closure_ref));
-            for upvalue in captured {
-                self.emit_instr(OpCode::CaptureUpvalue(upvalue));
-            }
-        } else {
-            self.emit_instr(OpCode::Closure(new_closure_ref));
+        } else if self.resolver.current_scope_depth() == 0 {
             self.emit_instr(OpCode::DefineGlobal(new_closure_name));
         }
     }
