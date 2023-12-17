@@ -145,6 +145,7 @@ impl Compiler {
                 } else {
                     self.emit_instr(OpCode::DefineClass(*name));
                 }
+                let class_decl_scope = self.resolver.begin_scope();
                 if let Some(sup_name_ref) = super_name {
                     if refs_eql!(self.strings, *sup_name_ref, *name) {
                         self.emit_err("class can't inherit from itself");
@@ -153,8 +154,9 @@ impl Compiler {
                     self.emit_instr(OpCode::Inherit);
                 }
                 for method in methods {
-                    self.compile_function(method, true);
+                    self.compile_function(method, true, super_name.is_some())?;
                 }
+                self.resolver.end_scope(class_decl_scope)?;
                 if self.resolver.current_scope_depth() == 0 {
                     self.emit_instr(OpCode::Pop);
                 }
@@ -303,7 +305,7 @@ impl Compiler {
                     None => self.emit_err("used keyword 'this' outside of method"),
             },
             Expr::Primary(Primary::Super) =>
-                match self.resolver.resolve(&self.strings, self.this) {
+                match self.resolver.resolve(&self.strings, self.super_) {
                     Some(StackRef::Local(idx)) => self.emit_instr(OpCode::GetLocal(idx)),
                     Some(StackRef::Upval(idx)) => self.emit_instr(OpCode::GetUpval(idx)),
                     None => self.emit_err("used keyword 'super' outside of method"),
@@ -317,6 +319,11 @@ impl Compiler {
             }
             Expr::And(lhs, rhs) => self.compile_and(lhs, rhs)?,
             Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs)?,
+            Expr::Dot(lhs@box Expr::Primary(Primary::Super), rhs) => {
+                self.compile_expr(&Expr::Primary(Primary::This))?;
+                self.compile_expr(lhs)?;
+                self.emit_instr(OpCode::GetSuperMethod(*rhs));
+            }
             Expr::Dot(lhs, rhs) => {
                 self.compile_expr(lhs)?;
                 self.emit_instr(OpCode::GetProperty(*rhs));
@@ -413,6 +420,7 @@ impl Compiler {
         &mut self,
         f: &Function,
         is_method: bool,
+        has_super: bool,
     ) -> Result<()> {
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
@@ -441,6 +449,10 @@ impl Compiler {
         let scope = self.resolver.begin_fn_scope(&self.strings, &f.args);
         if is_method {
             self.resolver.declare_local(&self.strings, self.this)?;
+            self.resolver.init_last_local();
+        }
+        if has_super {
+            self.resolver.declare_local(&self.strings, self.super_)?;
             self.resolver.init_last_local();
         }
         let new_closure_type = match self.strings.get(f.name).as_str() {

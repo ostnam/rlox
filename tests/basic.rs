@@ -869,4 +869,27 @@ fn test_classes() {
         "#),
         Ok(OwnedLoxVal::Num(55.0)),
     );
+    assert_eq!(
+        common::run_program(r#"
+            class A {
+                f() {
+                    return 10;
+                }
+            }
+            class C < A {
+                init() {
+                    this.x = 20;
+                }
+                f() {
+                    fun inner() {
+                        return this.x + super.f();
+                    }
+                    return inner;
+                }
+            }
+            var f = C().f();
+            f();
+        "#),
+        Ok(OwnedLoxVal::Num(30.0)),
+    );
 }

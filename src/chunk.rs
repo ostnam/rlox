@@ -146,7 +146,7 @@ pub enum OpCode {
     GetProperty(Ref<String>),
     GetGlobal(Ref<String>),
     GetLocal(RelativeStackIdx),
-    GetSuperMethod(RelativeStackIdx),
+    GetSuperMethod(Ref<String>),
     GetUpval(usize),
     GE,
     GT,

@@ -244,9 +244,21 @@ impl VM {
                                     line: 0
                                 });
                             }
-                            if let Some(this) = closure.this {
-                                self.push_val(LoxVal::Instance(this));
+                            let mut this = None;
+                            if let Some(t) = closure.this {
+                                this = Some(LoxVal::Instance(t));
                                 n_args += 1;
+                            }
+                            let mut super_ = None;
+                            if let Some(s) = closure.sup {
+                                super_ = Some(LoxVal::Class(s));
+                                n_args += 1;
+                            }
+                            if let Some(v) = this {
+                                self.push_val(v);
+                            }
+                            if let Some(v) = super_ {
+                                self.push_val(v);
                             }
                             self.call_frames.push(CallFrame {
                                 closure: closure_ref,
@@ -387,8 +399,47 @@ impl VM {
                     let val = self.get_local(var_ref)?;
                     self.push_val(val.clone());
                 }
-                OpCode::GetSuperMethod(var_ref) => {
-                    todo!();
+                OpCode::GetSuperMethod(meth_name) => {
+                    let cls_ref = match self.pop_val()? {
+                        LoxVal::Class(r) => r.clone(),
+                        other => return Err(VMError::TypeError {
+                            line: 0,
+                            expected: "class".to_string(),
+                            got: other.type_name(),
+                            details: "'super' isn't a class".to_string(),
+                        }),
+                    };
+                    let this = match self.pop_val()? {
+                        LoxVal::Instance(i) => i.clone(),
+                        other => return Err(VMError::TypeError {
+                            line: 0,
+                            expected: "instance".to_string(),
+                            got: other.type_name(),
+                            details: "BUG".to_string(),
+                        }),
+                    };
+                    let mut super_cls = Some(self.classes.get(cls_ref));
+                    let mut found = None;
+                    let meth_name = self.strings.get(meth_name);
+                    while let Some(cls) = super_cls {
+                        if let Some(meth) = cls.methods.get(meth_name) {
+                            let og = self.closures.get(*meth).clone();
+                            let bound = Closure {
+                                this: Some(this),
+                                ..og
+                            };
+                            let bound_ref = self.closures.insert(bound);
+                            found = Some(LoxVal::Closure(bound_ref));
+                            break;
+                        }
+                        super_cls = cls.sup.map(|r| self.classes.get(r));
+                    }
+                    match found {
+                        Some(val) => self.push_val(val),
+                        None => return Err(VMError::UndefinedProperty {
+                            prop_name: meth_name.clone()
+                        }),
+                    };
                 }
 
                 OpCode::GetProperty(prop_name_ref) => {
@@ -413,7 +464,6 @@ impl VM {
                                 let f_closure = self.closures.get(*f).clone();
                                 let method = Closure {
                                     this: Some(inst_ref),
-                                    sup: cls.sup,
                                     ..f_closure
                                 };
                                 let meth_ref = self.closures.insert(method);
@@ -542,7 +592,7 @@ impl VM {
                 OpCode::Method(name_ref) => {
                     let name = self.strings.get(name_ref).clone();
                     let meth = match self.pop_val()? {
-                        LoxVal::Closure(f) => f.clone(),
+                        LoxVal::Closure(f) => f,
                         other => return Err(VMError::Bug(
                             format!("non-function: {other:?} was on stack in method position during methods declarations"),
                         )),
@@ -553,7 +603,10 @@ impl VM {
                             format!("non-class: {other:?} was on stack in class position during methods declarations"),
                         )),
                     };
-                    let class = self.classes.get_mut(*cls);
+                    let sup = self.classes.get(cls).sup;
+                    let closure = self.closures.get_mut(meth);
+                    closure.sup = sup;
+                    let class = self.classes.get_mut(cls);
                     class.methods.insert(name, meth);
                 },
 
@@ -730,6 +783,19 @@ impl VM {
                 details: format!(
                     "tried to peek but stack.len() == {}",
                     self.stack.len(),
+                ),
+            }),
+        }
+    }
+
+    fn peek_mut(&mut self) -> Result<&mut LoxVal, VMError> {
+        match self.stack.last_mut() {
+            Some(LocalVar::OnStack(v)) => Ok(v),
+            Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get_mut(*heap_ref)),
+            None => Err(VMError::StackExhausted {
+                line: 0,
+                details: format!(
+                    "tried to peek but stack.len() == 0",
                 ),
             }),
         }
