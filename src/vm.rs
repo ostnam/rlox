@@ -332,7 +332,7 @@ impl VM {
                 OpCode::Constant(c) => self.push_val(c.clone()),
 
                 OpCode::DefineClass(name) => {
-                    let val = self.peek(0)?.clone();
+                    let val = self.peek()?.clone();
                     self.globals.insert(self.strings.get(name).clone(), val);
                 },
 
@@ -473,7 +473,7 @@ impl VM {
                 //  As we are in a class definition, the superclass will be
                 //  popped so that the subclass remains on top of the stack.
                 OpCode::Inherit => {
-                    match (self.pop_val()?, self.peek(0)?) {
+                    match (self.pop_val()?, self.peek()?) {
                         (LoxVal::Class(sup), &LoxVal::Class(sub)) => {
                             self.classes.get_mut(sub).sup = Some(sup);
                             let inherited = self.classes.get(sup).methods.clone();
@@ -494,14 +494,14 @@ impl VM {
                 }
 
                 OpCode::JumpIfFalse(tgt) => {
-                    if let LoxVal::Bool(false) = self.peek(0)?.cast_to_bool() {
+                    if let LoxVal::Bool(false) = self.peek()?.cast_to_bool() {
                         self.set_ip(tgt)?;
                         continue;
                     }
                 },
 
                 OpCode::JumpIfTrue(tgt) => {
-                    if let LoxVal::Bool(true) = self.peek(0)?.cast_to_bool() {
+                    if let LoxVal::Bool(true) = self.peek()?.cast_to_bool() {
                         self.set_ip(tgt)?;
                         continue;
                     }
@@ -547,8 +547,8 @@ impl VM {
                             format!("non-function: {other:?} was on stack in method position during methods declarations"),
                         )),
                     };
-                    let cls = match self.peek(0)? {
-                        LoxVal::Class(cls) => cls,
+                    let cls = match self.peek()? {
+                        LoxVal::Class(cls) => cls.clone(),
                         other => return Err(VMError::Bug(
                             format!("non-class: {other:?} was on stack in class position during methods declarations"),
                         )),
@@ -602,7 +602,7 @@ impl VM {
 
                 OpCode::SetGlobal(name_ref) => {
                     let name = self.strings.get(name_ref).clone();
-                    match self.globals.insert(name.clone(), self.peek(0)?.clone()) {
+                    match self.globals.insert(name.clone(), self.peek()?.clone()) {
                         Some(_) => (),
                         None => return Err(VMError::UndefinedVariable {
                             line: 0,
@@ -612,7 +612,7 @@ impl VM {
                 }
 
                 OpCode::SetLocal(var_ref) => {
-                    let val = self.peek(0)?;
+                    let val = self.peek()?;
                     self.set_local(var_ref, val.clone())?;
                 }
 
@@ -721,14 +721,14 @@ impl VM {
         }
     }
 
-    fn peek(&self, depth: usize) -> Result<&LoxVal, VMError> {
+    fn peek(&self) -> Result<&LoxVal, VMError> {
         match self.stack.last() {
             Some(LocalVar::OnStack(v)) => Ok(&v),
             Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get(*heap_ref)),
             None => Err(VMError::StackExhausted {
                 line: 0,
                 details: format!(
-                    "tried to peek {depth} values deep but stack.len() == {}",
+                    "tried to peek but stack.len() == {}",
                     self.stack.len(),
                 ),
             }),
