@@ -1,3 +1,5 @@
+use anyhow::Result;
+
 use crate::arena::{Ref, Arena};
 use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary, ForInit, VarDecl};
 use crate::chunk::{CompiledFn, FnType, OpCode, Chunk, Instruction, LoxVal};
@@ -124,20 +126,21 @@ impl Compiler {
     /// The main compilation pass.
     fn pass(&mut self, nodes: Vec<Declaration>) -> Result<(), ()> {
         for node in &nodes {
-            self.compile_decl(node);
+            match self.compile_decl(node) {
+                Ok(_) => (),
+                Err(e) => self.emit_err(&e.to_string()),
+            }
         }
         self.emit_instr(OpCode::Return);
         Ok(())
     }
 
-    fn compile_decl(&mut self, decl: &Declaration) {
+    fn compile_decl(&mut self, decl: &Declaration) -> Result<()> {
         match decl {
             Declaration::Class { name, super_name, methods } => {
                 self.emit_instr(OpCode::Class(*name));
                 if self.resolver.current_scope_depth() > 0 {
-                    if let Err(e) = self.resolver.declare_local(&self.strings, *name) {
-                        self.emit_err(&e.to_string());
-                    }
+                    self.resolver.declare_local(&self.strings, *name)?;
                     self.resolver.init_last_local();
                 } else {
                     self.emit_instr(OpCode::DefineClass(*name));
@@ -156,20 +159,19 @@ impl Compiler {
                     self.emit_instr(OpCode::Pop);
                 }
             },
-            Declaration::Fun(f) => self.compile_function(&f, false),
-            Declaration::Stmt(stmt) => self.compile_stmt(&stmt),
-            Declaration::Var(var_decl) => self.compile_var_decl(var_decl),
-        }
+            Declaration::Fun(f) => self.compile_function(&f, false, false)?,
+            Declaration::Stmt(stmt) => self.compile_stmt(&stmt)?,
+            Declaration::Var(var_decl) => self.compile_var_decl(var_decl)?,
+        };
+        Ok(())
     }
 
-    fn compile_var_decl(&mut self, var_decl: &VarDecl) {
+    fn compile_var_decl(&mut self, var_decl: &VarDecl) -> Result<()> {
         if self.resolver.current_scope_depth() > 0 {
-            if let Err(e) = self.resolver.declare_local(&self.strings, var_decl.name) {
-                self.emit_err(&e.to_string());
-            }
+            self.resolver.declare_local(&self.strings, var_decl.name)?;
         }
         if let Some(expr) = &var_decl.val {
-            self.compile_expr(expr);
+            self.compile_expr(expr)?;
         } else {
             self.emit_instr(OpCode::Constant(LoxVal::Nil));
         }
@@ -178,12 +180,13 @@ impl Compiler {
         } else {
             self.emit_instr(OpCode::DefineGlobal(var_decl.name));
         }
+        Ok(())
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt) {
+    fn compile_stmt(&mut self, stmt: &Stmt) -> Result<()> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.compile_expr(&expr);
+                self.compile_expr(&expr)?;
                 self.emit_instr(OpCode::Pop);
             },
 
@@ -191,9 +194,9 @@ impl Compiler {
                 let scope = self.resolver.begin_scope();
                 match init {
                     Some(ForInit::Decl(var_decl)) =>
-                        self.compile_var_decl(&var_decl),
+                        self.compile_var_decl(&var_decl)?,
                     Some(ForInit::Expr(expr)) => {
-                        self.compile_expr(&expr);
+                        self.compile_expr(&expr)?;
                         self.emit_instr(OpCode::Pop);
                     }
                     None => (),
@@ -201,15 +204,15 @@ impl Compiler {
                 let mut end_jmp = None;
                 let before_cond = self.get_jump_tgt();
                 if let Some(expr) = cond {
-                    self.compile_expr(&expr);
+                    self.compile_expr(&expr)?;
                     end_jmp = Some(
                         self.emit_jump(JumpKind::IfFalse, JumpTgt::default())
                     );
                     self.emit_instr(OpCode::Pop);
                 }
-                self.compile_stmt(body);
+                self.compile_stmt(body)?;
                 if let Some(expr) = update {
-                    self.compile_expr(expr);
+                    self.compile_expr(expr)?;
                     self.emit_instr(OpCode::Pop);
                     self.emit_jump(JumpKind::Inconditional, before_cond);
                 }
@@ -221,22 +224,21 @@ impl Compiler {
             },
 
             Stmt::If { cond, body, else_cond } => {
-                self.compile_expr(cond);
+                self.compile_expr(cond)?;
                 let false_jmp = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
                 self.emit_instr(OpCode::Pop);
-                self.compile_stmt(body);
+                self.compile_stmt(body)?;
                 let body_jmp = self.emit_jump(JumpKind::Inconditional, JumpTgt::default());
                 self.set_jump_tgt(false_jmp);
                 self.emit_instr(OpCode::Pop);
                 if let Some(stmt) = else_cond {
-                    self.compile_stmt(stmt);
+                    self.compile_stmt(stmt)?;
                 }
                 self.set_jump_tgt(body_jmp);
             },
             Stmt::Print(expr) => {
-                self.compile_expr(&expr);
-                self.emit_instr(OpCode::Print);
-                // The VM pops the value that is printed.
+                self.compile_expr(&expr)?;
+                self.emit_instr(OpCode::Print); // the VM pops the value that is printed.
             },
             Stmt::Return(Some(_)) if self.current_closure_type == FnType::Ctor => self.emit_err("can't return value from init"),
             Stmt::Return(None) if self.current_closure_type == FnType::Ctor => self.emit_implicit_return(),
@@ -248,17 +250,17 @@ impl Compiler {
                     FnType::Ctor => unreachable!("BUG: improper pattern matching for Stmt::Return in constructors"),
                 }
                 match expr {
-                    Some(expr) => self.compile_expr(expr),
+                    Some(expr) => self.compile_expr(expr)?,
                     None => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
                 }
                 self.emit_instr(OpCode::Return);
             },
             Stmt::While { cond, body } => {
                 let loop_start = self.get_jump_tgt();
-                self.compile_expr(cond);
+                self.compile_expr(cond)?;
                 let exit_jmp = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
                 self.emit_instr(OpCode::Pop);
-                self.compile_stmt(body);
+                self.compile_stmt(body)?;
                 self.emit_jump(JumpKind::Inconditional, loop_start);
                 self.set_jump_tgt(exit_jmp);
                 self.emit_instr(OpCode::Pop);
@@ -266,25 +268,26 @@ impl Compiler {
             Stmt::Block(block) => {
                 let scope = self.resolver.begin_scope();
                 for decl in block {
-                    self.compile_decl(decl);
+                    self.compile_decl(decl)?;
                 }
                 self.end_scope(scope);
             },
-        }
+        };
+        Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &Expr) {
+    fn compile_expr(&mut self, expr: &Expr) -> Result<()> {
         match expr {
             Expr::Unop { op, val } => {
-                self.compile_expr(val);
+                self.compile_expr(val)?;
                 self.emit_instr(op.as_opcode());
             },
             Expr::Binop { op, lhs, rhs } => {
-                self.compile_expr(lhs);
-                self.compile_expr(rhs);
+                self.compile_expr(lhs)?;
+                self.compile_expr(rhs)?;
                 self.emit_instr(op.as_opcode());
             },
-            Expr::Assignment { tgt, val } => self.compile_assignment(tgt, val),
+            Expr::Assignment { tgt, val } => self.compile_assignment(tgt, val)?,
             Expr::Primary(Primary::Bool(b)) =>
                 self.emit_instr(OpCode::Constant(LoxVal::Bool(*b))),
             Expr::Primary(Primary::Nil) =>
@@ -307,25 +310,26 @@ impl Compiler {
                 },
             Expr::Call { lhs, args } => {
                 for arg in args {
-                    self.compile_expr(arg);
+                    self.compile_expr(arg)?;
                 }
-                self.compile_expr(lhs);
+                self.compile_expr(lhs)?;
                 self.emit_instr(OpCode::Call(args.len() as u8));
             }
-            Expr::And(lhs, rhs) => self.compile_and(lhs, rhs),
-            Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs),
+            Expr::And(lhs, rhs) => self.compile_and(lhs, rhs)?,
+            Expr::Or(lhs, rhs) => self.compile_or(lhs, rhs)?,
             Expr::Dot(lhs, rhs) => {
-                self.compile_expr(lhs);
+                self.compile_expr(lhs)?;
                 self.emit_instr(OpCode::GetProperty(*rhs));
             }
-        }
+        };
+        Ok(())
     }
 
     /// Compiles Expr::Assignment
-    fn compile_assignment(&mut self, tgt: &Expr, val: &Expr) {
+    fn compile_assignment(&mut self, tgt: &Expr, val: &Expr) -> Result<()> {
         match tgt {
             Expr::Primary(Primary::Name(n)) => {
-                self.compile_expr(val);
+                self.compile_expr(val)?;
                 match self.resolver.resolve(&self.strings, *n) {
                     Some(StackRef::Local(idx)) => self.emit_instr(OpCode::SetLocal(idx)),
                     Some(StackRef::Upval(upval)) => {
@@ -335,8 +339,8 @@ impl Compiler {
                 }
             },
             Expr::Dot(lhs, prop) => {
-                self.compile_expr(lhs);
-                self.compile_expr(val);
+                self.compile_expr(lhs)?;
+                self.compile_expr(val)?;
                 self.emit_instr(OpCode::SetProperty(*prop));
             },
             Expr::Primary(_)
@@ -346,7 +350,8 @@ impl Compiler {
             | Expr::Call { .. }
             | Expr::And(_, _)
             | Expr::Or(_, _) => self.emit_err("invalid assignment target"),
-        }
+        };
+        Ok(())
     }
 
     /// Returns a `JumpTgt` that corresponds to the next instruction.
@@ -408,14 +413,12 @@ impl Compiler {
         &mut self,
         f: &Function,
         is_method: bool,
-    ) {
+    ) -> Result<()> {
         // if we're in a local scope, we need to add the function name
         // as a local variable so that when we compile the body,
         // the name resolves properly.
         if !is_method && self.resolver.current_scope_depth() > 0 {
-            if let Err(e) = self.resolver.declare_local(&self.strings, f.name) {
-                self.emit_err(&e.to_string());
-            }
+            self.resolver.declare_local(&self.strings, f.name)?;
             self.resolver.init_last_local();
         };
         let arity = match f.args.len().try_into() {
@@ -437,9 +440,7 @@ impl Compiler {
         let grandparent_closure = std::mem::replace(&mut self.current_parent_closure, Some(parent_closure));
         let scope = self.resolver.begin_fn_scope(&self.strings, &f.args);
         if is_method {
-            if let Err(e) = self.resolver.declare_local(&self.strings, self.this) {
-                self.emit_err(&format!("BUG when compiling method declaration, {e}"));
-            }
+            self.resolver.declare_local(&self.strings, self.this)?;
             self.resolver.init_last_local();
         }
         let new_closure_type = match self.strings.get(f.name).as_str() {
@@ -449,7 +450,7 @@ impl Compiler {
         };
         let old_fn_type = std::mem::replace(&mut self.current_closure_type, new_closure_type);
         for decl in &f.body {
-            self.compile_decl(decl);
+            self.compile_decl(decl)?;
         }
         self.emit_implicit_return();
         let captured = match self.resolver.end_fn_scope(scope) {
@@ -472,6 +473,7 @@ impl Compiler {
         } else if self.resolver.current_scope_depth() == 0 {
             self.emit_instr(OpCode::DefineGlobal(new_closure_name));
         }
+        Ok(())
     }
 
     fn emit_implicit_return(&mut self) {
@@ -492,21 +494,23 @@ impl Compiler {
     }
 
     /// Compiles the "and" operator
-    fn compile_and(&mut self, lhs: &Expr, rhs: &Expr) {
-        self.compile_expr(lhs);
+    fn compile_and(&mut self, lhs: &Expr, rhs: &Expr) -> Result<()> {
+        self.compile_expr(lhs)?;
         let jump = self.emit_jump(JumpKind::IfFalse, JumpTgt::default());
         self.emit_instr(OpCode::Pop);
-        self.compile_expr(rhs);
+        self.compile_expr(rhs)?;
         self.set_jump_tgt(jump);
+        Ok(())
     }
 
     /// Compiles the "or" operator
-    fn compile_or(&mut self, lhs: &Expr, rhs: &Expr) {
-        self.compile_expr(lhs);
+    fn compile_or(&mut self, lhs: &Expr, rhs: &Expr) -> Result<()> {
+        self.compile_expr(lhs)?;
         let jump = self.emit_jump(JumpKind::IfTrue, JumpTgt::default());
         self.emit_instr(OpCode::Pop);
-        self.compile_expr(rhs);
+        self.compile_expr(rhs)?;
         self.set_jump_tgt(jump);
+        Ok(())
     }
 
     fn end_scope(&mut self, id: ScopeId) {

@@ -13,11 +13,22 @@ pub struct Resolver {
     next_scope_id: usize,
 }
 
+#[derive(Debug)]
 pub enum Error {
     LocalAlreadyDeclared,
     ImbalancedScope,
     WrongScope,
     WrongScopeKind,
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
 }
 
 impl Display for Error {
