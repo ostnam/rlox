@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 use std::fmt::Debug;
 
 use crate::arena::Ref;
@@ -63,14 +63,14 @@ pub enum Upvalue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
     pub name: Ref<String>,
-    pub methods: HashMap<String, Ref<Closure>>,
+    pub methods: FnvHashMap<String, Ref<Closure>>,
     pub sup: Option<Ref<Class>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassInstance {
     pub class: Ref<Class>,
-    pub fields: HashMap<String, LoxVal>,
+    pub fields: FnvHashMap<String, LoxVal>,
 }
 
 /// Instantiate a new, empty `ClassInstance` of the passed-in `class`.
@@ -78,7 +78,7 @@ pub struct ClassInstance {
 pub fn new_class_instance(class: Ref<Class>) -> ClassInstance {
     ClassInstance {
         class,
-        fields: HashMap::new(),
+        fields: FnvHashMap::default(),
     }
 }
 

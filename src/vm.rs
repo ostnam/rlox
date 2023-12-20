@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 
 use crate::arena::{Arena, Ref};
 use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue, new_class_instance, FnType};
@@ -7,7 +7,7 @@ use crate::compiler::CompilationResult;
 
 pub struct VM {
     stack: Vec<LocalVar>,
-    globals: HashMap<String, LoxVal>,
+    globals: FnvHashMap<String, LoxVal>,
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
     heap: Arena<LoxVal>,
@@ -51,7 +51,7 @@ impl From<CompilationResult> for VM {
         let main_closure_ref = closures.insert(main_closure);
         VM {
             stack: Vec::new(),
-            globals: HashMap::new(),
+            globals: FnvHashMap::default(),
             last_val: LoxVal::Nil,
             call_frames: vec![
                 CallFrame {
@@ -325,7 +325,7 @@ impl VM {
                 OpCode::Class(name) => {
                     let class = Class {
                         name,
-                        methods: HashMap::new(),
+                        methods: FnvHashMap::default(),
                         sup: None,
                     };
                     let class_ref = self.classes.insert(class);
