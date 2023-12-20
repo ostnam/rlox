@@ -4,6 +4,7 @@ use crate::arena::{Arena, Ref};
 use crate::chunk::{RelativeStackIdx, Upvalue};
 use crate::refs_eql;
 
+#[derive(Default)]
 pub struct Resolver {
     /// Stack at a given time.
     locals: Vec<Local>,
@@ -96,7 +97,7 @@ impl Resolver {
         arena: &Arena<String>,
         name: Ref<String>,
     ) -> Result<(), Error> {
-        debug_assert!(self.scopes.len() > 0);
+        debug_assert!(!self.scopes.is_empty());
         for local in self.current_scope() {
             if refs_eql!(arena, name, local.name) {
                 return Err(Error::LocalAlreadyDeclared);
@@ -106,9 +107,9 @@ impl Resolver {
             name,
             initialized: false,
         });
-        self.scopes
-            .last_mut()
-            .map(|scope| scope.length += 1);
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.length += 1;
+        }
         Ok(())
     }
 
@@ -218,7 +219,7 @@ impl Resolver {
         &mut self,
         strings: &Arena<String>,
         args: &[Ref<String>],
-    ) -> ScopeId {
+    ) -> Result<ScopeId, Error> {
         let id = self.gen_scope_id();
         self.scopes.push(Scope {
             start: self.locals.len(),
@@ -227,10 +228,10 @@ impl Resolver {
             id,
         });
         for arg in args {
-            self.declare_local(strings, *arg);
+            self.declare_local(strings, *arg)?;
             self.init_last_local();
         }
-        id
+        Ok(id)
     }
 
     pub fn end_fn_scope(&mut self, expected: ScopeId) -> Result<Vec<Upvalue>, Error> {
@@ -263,16 +264,6 @@ impl Resolver {
                 return false;
             }
         }
-        return true;
-    }
-}
-
-impl Default for Resolver {
-    fn default() -> Self {
-        Resolver {
-            locals: Vec::new(),
-            scopes: Vec::new(),
-            next_scope_id: 0, 
-        }
+        true
     }
 }

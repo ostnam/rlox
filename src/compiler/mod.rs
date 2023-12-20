@@ -161,8 +161,8 @@ impl Compiler {
                     self.emit_instr(OpCode::Pop);
                 }
             },
-            Declaration::Fun(f) => self.compile_function(&f, false, false)?,
-            Declaration::Stmt(stmt) => self.compile_stmt(&stmt)?,
+            Declaration::Fun(f) => self.compile_function(f, false, false)?,
+            Declaration::Stmt(stmt) => self.compile_stmt(stmt)?,
             Declaration::Var(var_decl) => self.compile_var_decl(var_decl)?,
         };
         Ok(())
@@ -188,7 +188,7 @@ impl Compiler {
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<()> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.compile_expr(&expr)?;
+                self.compile_expr(expr)?;
                 self.emit_instr(OpCode::Pop);
             },
 
@@ -196,9 +196,9 @@ impl Compiler {
                 let scope = self.resolver.begin_scope();
                 match init {
                     Some(ForInit::Decl(var_decl)) =>
-                        self.compile_var_decl(&var_decl)?,
+                        self.compile_var_decl(var_decl)?,
                     Some(ForInit::Expr(expr)) => {
-                        self.compile_expr(&expr)?;
+                        self.compile_expr(expr)?;
                         self.emit_instr(OpCode::Pop);
                     }
                     None => (),
@@ -206,7 +206,7 @@ impl Compiler {
                 let mut end_jmp = None;
                 let before_cond = self.get_jump_tgt();
                 if let Some(expr) = cond {
-                    self.compile_expr(&expr)?;
+                    self.compile_expr(expr)?;
                     end_jmp = Some(
                         self.emit_jump(JumpKind::IfFalse, JumpTgt::default())
                     );
@@ -239,7 +239,7 @@ impl Compiler {
                 self.set_jump_tgt(body_jmp);
             },
             Stmt::Print(expr) => {
-                self.compile_expr(&expr)?;
+                self.compile_expr(expr)?;
                 self.emit_instr(OpCode::Print); // the VM pops the value that is printed.
             },
             Stmt::Return(Some(_)) if self.current_closure_type == FnType::Ctor => self.emit_err("can't return value from init"),
@@ -446,7 +446,7 @@ impl Compiler {
         let new_closure_ref = self.closures.insert(new_closure);
         let parent_closure = std::mem::replace(&mut self.current_closure, new_closure_ref);
         let grandparent_closure = std::mem::replace(&mut self.current_parent_closure, Some(parent_closure));
-        let scope = self.resolver.begin_fn_scope(&self.strings, &f.args);
+        let scope = self.resolver.begin_fn_scope(&self.strings, &f.args)?;
         if is_method {
             self.resolver.declare_local(&self.strings, self.this)?;
             self.resolver.init_last_local();

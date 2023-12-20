@@ -100,7 +100,7 @@ impl LoxVal {
             LoxVal::Closure(_)  => "function".to_string(),
             LoxVal::NativeFn(_)  => "function (builtin)".to_string(),
             LoxVal::Class(_)  => "class".to_string(),
-            LoxVal::Instance(_)  => format!("instance"),
+            LoxVal::Instance(_)  => "instance".to_string(),
         }
     }
 

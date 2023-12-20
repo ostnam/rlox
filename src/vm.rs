@@ -108,6 +108,8 @@ pub enum VMError {
     ArgsButNoInit,
 }
 
+type LoxBuiltinFn = fn(&[LoxVal]) -> Result<LoxVal, VMError>;
+
 impl VM {
     fn get_current_instr(&self) -> Result<Instruction, VMError> {
         let current_frame = self.get_current_frame()?;
@@ -123,7 +125,7 @@ impl VM {
                 frame.ip = tgt;
                 Ok(())
             }
-            None => return Err(VMError::IncorrectCurrentFunction),
+            None => Err(VMError::IncorrectCurrentFunction),
         }
     }
 
@@ -401,7 +403,7 @@ impl VM {
                 }
                 OpCode::GetSuperMethod(meth_name) => {
                     let cls_ref = match self.pop_val()? {
-                        LoxVal::Class(r) => r.clone(),
+                        LoxVal::Class(r) => r,
                         other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "class".to_string(),
@@ -410,7 +412,7 @@ impl VM {
                         }),
                     };
                     let this = match self.pop_val()? {
-                        LoxVal::Instance(i) => i.clone(),
+                        LoxVal::Instance(i) => i,
                         other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "instance".to_string(),
@@ -444,7 +446,7 @@ impl VM {
 
                 OpCode::GetProperty(prop_name_ref) => {
                     let inst_ref = match self.pop_val()? {
-                        LoxVal::Instance(r) => r.clone(),
+                        LoxVal::Instance(r) => r,
                         other => return Err(VMError::TypeError {
                             line: 0,
                             expected: "instance".to_string(),
@@ -598,7 +600,7 @@ impl VM {
                         )),
                     };
                     let cls = match self.peek()? {
-                        LoxVal::Class(cls) => cls.clone(),
+                        LoxVal::Class(cls) => *cls,
                         other => return Err(VMError::Bug(
                             format!("non-class: {other:?} was on stack in class position during methods declarations"),
                         )),
@@ -776,7 +778,7 @@ impl VM {
 
     fn peek(&self) -> Result<&LoxVal, VMError> {
         match self.stack.last() {
-            Some(LocalVar::OnStack(v)) => Ok(&v),
+            Some(LocalVar::OnStack(v)) => Ok(v),
             Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get(*heap_ref)),
             None => Err(VMError::StackExhausted {
                 line: 0,
@@ -794,9 +796,7 @@ impl VM {
             Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get_mut(*heap_ref)),
             None => Err(VMError::StackExhausted {
                 line: 0,
-                details: format!(
-                    "tried to peek but stack.len() == 0",
-                ),
+                details: "tried to peek but stack.len() == 0".to_string(),
             }),
         }
     }
@@ -828,7 +828,7 @@ fn native_clock(_args: &[LoxVal]) -> Result<LoxVal, VMError> {
     Ok(LoxVal::Num(since_unix as f64))
 }
 
-fn get_native(name: &str) -> Option<fn(&[LoxVal]) -> Result<LoxVal, VMError>> {
+fn get_native(name: &str) -> Option<LoxBuiltinFn> {
     match name {
         "clock" => Some(native_clock),
         _ => None

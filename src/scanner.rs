@@ -144,7 +144,7 @@ impl<'a> Scanner<'a> {
     /// Unlike `advance`, it doesn't increment the internal counter, and calling
     /// `peek` repeatedly returns the same character (or `None`) at every call.
     fn peek(&mut self) -> Option<char> {
-        self.chars.peek().map(|x| *x)
+        self.chars.peek().copied()
     }
 
     /// Returns the next `char` from the `src`, or `None` if we `advance`d past
@@ -153,7 +153,7 @@ impl<'a> Scanner<'a> {
     fn peek_next(&self) -> Option<char> {
         let mut copy = self.chars.clone();
         copy.next();
-        copy.peek().map(|x| *x)
+        copy.peek().copied()
     }
 
     /// If the next char is equal to the one passed, returns true and consumes

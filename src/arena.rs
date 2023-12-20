@@ -53,7 +53,7 @@ macro_rules! ref_eql_lit {
 // we need to implement it manually, otherwise Ref<T> won't be Copy if T isn't.
 impl<T> Clone for Ref<T> {
     fn clone(&self) -> Self {
-        Self { idx: self.idx.clone(), phantom: self.phantom.clone() }
+        *self
     }
 }
 

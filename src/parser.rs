@@ -175,7 +175,7 @@ impl Parser {
     }
 
     fn end_parsing(&mut self) {
-        if let Some(_) = self.scanner.next() {
+        if self.scanner.next().is_some() {
             self.emit_err("tokens left at the end of parsing");
         }
     }
@@ -313,17 +313,17 @@ impl Parser {
             if matches!(self.previous, Token::Semicolon { .. }) {
                 return;
             }
-            match self.current {
-                Some( Token::Class  { .. }
-                    | Token::Fun    { .. }
-                    | Token::Var    { .. }
-                    | Token::For    { .. }
-                    | Token::If     { .. }
-                    | Token::While  { .. }
-                    | Token::Print  { .. }
-                    | Token::Return { .. }
-                    ) => return,
-                _ => (),
+            if let Some(
+                Token::Class  { .. }
+                | Token::Fun    { .. }
+                | Token::Var    { .. }
+                | Token::For    { .. }
+                | Token::If     { .. }
+                | Token::While  { .. }
+                | Token::Print  { .. }
+                | Token::Return { .. }
+            ) = self.current {
+                return;
             }
             self.advance();
         }
@@ -384,7 +384,7 @@ impl Parser {
         consume!(self, Token::LBrace, "missing { after class name");
         let mut methods = Vec::new();
         while !tok_matches!(self, Token::RBrace) {
-            if let None = self.current {
+            if self.current.is_none() {
                 self.emit_err("missing } after class declaration");
             }
             let meth = match self.function_declaration()? {
