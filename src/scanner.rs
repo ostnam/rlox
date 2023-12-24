@@ -128,7 +128,7 @@ impl<'a> Scanner<'a> {
         Scanner {
             chars: src.chars().peekable(),
             current_line: 1,
-            strings: Arena::new()
+            strings: Arena::default()
         }
     }
 

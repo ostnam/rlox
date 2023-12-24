@@ -133,7 +133,7 @@ impl Parser {
         Ok(Parser {
             scanner: Box::new(scanner),
             strings,
-            functions: Arena::new(),
+            functions: Arena::default(),
             previous: Token::LParen { line: 0 },
             current: None,
             had_error: false,

@@ -70,7 +70,7 @@ enum JumpKind {
 
 impl Compiler {
     pub fn compile(mut input: Parse) -> Option<CompilationResult> {
-        let mut closures = Arena::new();
+        let mut closures = Arena::default();
         let name = input.strings.insert("main".to_string());
         let main = CompiledFn {
             arity: 0,

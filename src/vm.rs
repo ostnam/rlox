@@ -47,7 +47,7 @@ impl From<CompilationResult> for VM {
             this: None,
             upvalues: Vec::new(),
         };
-        let mut closures = Arena::new();
+        let mut closures = Arena::default();
         let main_closure_ref = closures.insert(main_closure);
         VM {
             stack: Vec::new(),
@@ -61,12 +61,12 @@ impl From<CompilationResult> for VM {
                     kind: FnType::Main,
                 }
             ],
-            heap: Arena::new(),
+            heap: Arena::default(),
             functions: main.closures,
             closures,
             strings: main.strings,
-            classes: Arena::new(),
-            instances: Arena::new(),
+            classes: Arena::default(),
+            instances: Arena::default(),
         }
     }
 }

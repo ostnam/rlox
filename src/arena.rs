@@ -61,11 +61,6 @@ impl<T> Copy for Ref<T> {
 }
 
 impl<T> Arena<T> {
-    /// Create a new, empty arena.
-    pub fn new() -> Self {
-        Arena { heap: Vec::new() }
-    }
-
     /// Insert a new value in the arena.
     pub fn insert(&mut self, val: T) -> Ref<T> {
         self.heap.push(val);
@@ -102,6 +97,8 @@ impl <T: Clone> Arena<T> {
 
 impl<T> Default for Arena<T> {
     fn default() -> Self {
-        Self::new()
+        Arena {
+            heap: Vec::new(),
+        }
     }
 }
