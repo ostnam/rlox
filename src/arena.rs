@@ -1,18 +1,72 @@
 /// The compiler and VM use the `Arena` defined here to store values.
+/// The `Arena` type implements methods used in a moving GC approach.
 use std::marker::PhantomData;
 
 /// The arena itself.
 #[derive(Debug)]
-pub struct Arena<T> {
+pub struct Arena<T, GCflag: GCFlag> {
     heap: Vec<Value<T>>,
+
+    /// Controls whether the values in the arena can be moved to another
+    /// for garbage collection, and whether it can be locked.
+    flag: GCflag,
 }
 
-#[derive(Debug)]
+pub trait GCFlag: std::fmt::Debug + Default {}
+
+/// Must be implemented by a GCFlag to allow inserting values into the `Arena`
+/// holding it.
+pub trait InsertableArena {}
+
+/// `GCFlag` for arena holding values constructed during program execution or
+/// compilation.
+#[derive(Clone, Debug, Default)]
+pub struct Dynamic {
+    /// Some types, such as strings, can be created both during compilation and
+    /// execution. Having a single `Arena` for both cases prevents errors where a
+    /// `Ref` is used with the wrong `Arena`.
+    ///
+    /// During garbage collection, values created statically will not get collected,
+    /// as it would require iterating over every instruction in the body of every
+    /// function that could currently be called. Instead, they will be directly
+    /// moved to the new `Arena`.
+    /// This could be problematic if we couldn't tell whether each arena-allocated
+    /// value comes from a static or dynamic context. Luckily, since compilation
+    /// precedes execution, values allocated during compilation will always
+    /// be stored before those created during program execution.
+    ///
+    /// As a result, during garbage collection, if the number of compile-time
+    /// allocated values is known, these values can simply be moved from one `Arena`
+    /// to the other in the same position, and every existing `Ref` to it will
+    /// remain valid.
+    num_statics: usize,
+}
+
+/// Flag for `Arena`s that can store run-time values, as well as compilation-time.
+/// Supports garbage collection and value insertion/mutation.
+impl GCFlag for Dynamic {}
+impl InsertableArena for Dynamic {}
+
+/// Flag for `Arena`s that can only store compilation-time values.
+/// Supports insertion/mutation, but not garbage-collection.
+#[derive(Debug, Default)]
+pub struct StaticOpen {}
+impl GCFlag for StaticOpen {}
+impl InsertableArena for StaticOpen {}
+
+/// Flag for `Arena`s that can only store compilation-time values.
+/// Does not support mutation or insertion.
+#[derive(Debug, Default)]
+pub struct StaticLocked {}
+impl GCFlag for StaticLocked {}
+
+/// Holds values inside of an `Arena`.
+#[derive(Clone, Debug)]
 enum Value<T> {
     Live(T),
 
-    /// During garbage collection, after a value is moved from one `Arena` to
-    /// another, a `Ref` to the value in the new `Arena` is stored in its place,
+    /// During GC, after a value is moved from one `Arena` to another,
+    /// a `Ref` to the value in the new `Arena` is stored in its place,
     /// so that other references to the initial value can be updated.
     Moved(Ref<T>),
 }
@@ -58,6 +112,7 @@ impl<T> PartialEq for Ref<T> {
 }
 
 impl<T> Eq for Ref<T> {}
+impl<T> Copy for Ref<T> {}
 
 // we need to implement it manually, otherwise Ref<T> won't be Copy if T isn't.
 impl<T> Clone for Ref<T> {
@@ -66,10 +121,7 @@ impl<T> Clone for Ref<T> {
     }
 }
 
-impl<T> Copy for Ref<T> {
-}
-
-impl<T> Arena<T> {
+impl <T, U: GCFlag + InsertableArena> Arena<T, U> {
     /// Insert a new value in the arena.
     pub fn insert(&mut self, val: T) -> Ref<T> {
         self.heap.push(Value::Live(val));
@@ -78,7 +130,9 @@ impl<T> Arena<T> {
             phantom: PhantomData,
         }
     }
+}
 
+impl<T, U: GCFlag> Arena<T, U> {
     /// Update the value pointed to by the Ref in the arena.
     pub fn update(&mut self, key: Ref<T>, val: T) {
         self.heap[key.idx] = Value::Live(val);
@@ -98,34 +152,59 @@ impl<T> Arena<T> {
         self.heap[key.idx].unwrap_mut_value_ref()
     }
 
+    /// Returns the number of objects currently stored in the arena.
+    pub fn len(&self) -> usize {
+        self.heap.len()
+    }
+
     /// Returns a `Ref` that will point to the next inserted element.
     /// Is not valid and should not be used before that element is inserted,
     /// and a panic could occur otherwise.
     fn next_ref(&self) -> Ref<T> {
         Ref {
-            idx: self.heap.len() - 1,
+            idx: self.heap.len(),
             phantom: PhantomData,
         }
     }
 }
 
-impl <T> Arena<T> {
-    /// Moves a `Ref` from `self` to `to`.
-    pub fn move_ref(&mut self, to: &mut Arena<T>, ptr: Ref<T>) -> Ref<T> {
-        match self.heap.get(ptr.idx) {
+impl<T: Clone> Arena<T, Dynamic> {
+    /// Creates a new heap for GC.
+    pub fn next_heap(&mut self) -> Self {
+        let heap = self.heap.drain(..self.flag.num_statics).collect();
+        Arena {
+            heap,
+            flag: self.flag.clone(),
+        }
+    }
+
+    /// Moves a `Ref` from `self` to `to`, and returns the new `Ref` to it.
+    /// If the `Ref` points to a value that was already moved, simply returns
+    /// the new valid `Ref`.
+    ///
+    /// Also returns a bool: whether that `Ref` was just moved, or moved by a
+    /// previous call.
+    pub fn move_ref(&mut self, to: &mut Arena<T, Dynamic>, ptr: Ref<T>) -> (Ref<T>, bool) {
+        if ptr.idx < self.flag.num_statics {
+            return (ptr, true);
+        }
+        match self.heap.get(ptr.idx - self.flag.num_statics) {
             Some(Value::Live(_)) => {
                 let new_ptr = to.next_ref();
-                let val = std::mem::replace(&mut self.heap[ptr.idx], Value::Moved(new_ptr)).unwrap_value();
+                let val = std::mem::replace(
+                    &mut self.heap[ptr.idx - self.flag.num_statics],
+                    Value::Moved(new_ptr)
+                ).unwrap_value();
                 to.insert(val);
-                new_ptr
+                (new_ptr, false)
             },
-            Some(Value::Moved(new_ptr)) => *new_ptr,
+            Some(Value::Moved(new_ptr)) => (*new_ptr, true),
             None => panic!("tried to move invalid ref"),
         }
     }
 }
 
-impl <T: Clone> Arena<T> {
+impl<T: Clone, U: GCFlag + InsertableArena> Arena<T, U> {
     /// Stores a new value, equal to the one in the passed `Ref` in the `Arena`
     /// and returns its `Ref`.
     pub fn clone_in_arena(&mut self, key: Ref<T>) -> Ref<T> {
@@ -134,10 +213,31 @@ impl <T: Clone> Arena<T> {
     }
 }
 
-impl<T> Default for Arena<T> {
+impl<T> Arena<T, StaticOpen> {
+    /// Turns `self` into a `Arena<T, StaticLocked>`.
+    pub fn lock(self) -> Arena<T, StaticLocked> {
+        Arena {
+            heap: self.heap,
+            flag: StaticLocked::default(),
+        }
+    }
+
+    /// Turns `self` into a `Arena<T, Dynamic>`.
+    pub fn as_dynamic(self) -> Arena<T, Dynamic> {
+        Arena {
+            flag: Dynamic {
+                num_statics: self.heap.len(),
+            },
+            heap: self.heap,
+        }
+    }
+}
+
+impl<T, U: GCFlag> Default for Arena<T, U> {
     fn default() -> Self {
         Arena {
             heap: Vec::new(),
+            flag: U::default(),
         }
     }
 }

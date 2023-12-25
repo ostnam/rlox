@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::arena::{Arena, Ref};
+use crate::arena::{Arena, Ref, GCFlag, StaticOpen};
 use crate::chunk::{RelativeStackIdx, Upvalue};
 use crate::refs_eql;
 
@@ -94,7 +94,7 @@ impl Resolver {
     /// If there are no valid scopes currently, does nothing.
     pub fn declare_local(
         &mut self,
-        arena: &Arena<String>,
+        arena: &Arena<String, StaticOpen>,
         name: Ref<String>,
     ) -> Result<(), Error> {
         debug_assert!(!self.scopes.is_empty());
@@ -131,7 +131,7 @@ impl Resolver {
     /// If needed, register the upvalue in closures.
     pub fn resolve(
         &mut self,
-        str_arena: &Arena<String>,
+        str_arena: &Arena<String, StaticOpen>,
         name: Ref<String>,
     ) -> Option<StackRef> {
         match self.get_var_scope(str_arena, name) {
@@ -172,7 +172,7 @@ impl Resolver {
     /// Returns the scope, and the variable position in that scope.
     fn get_var_scope(
         &self,
-        str_arena: &Arena<String>,
+        str_arena: &Arena<String, StaticOpen>,
         name: Ref<String>,
     ) -> Option<(usize, RelativeStackIdx)> {
         for (stack_pos, var) in self.locals.iter().enumerate() {
@@ -217,7 +217,7 @@ impl Resolver {
 
     pub fn begin_fn_scope(
         &mut self,
-        strings: &Arena<String>,
+        strings: &Arena<String, StaticOpen>,
         args: &[Ref<String>],
     ) -> Result<ScopeId, Error> {
         let id = self.gen_scope_id();

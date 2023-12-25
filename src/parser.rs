@@ -1,12 +1,12 @@
-use crate::arena::{Arena, Ref};
+use crate::arena::{Arena, Ref, StaticOpen};
 use crate::ast::*;
 use crate::refs_eql;
 use crate::scanner::{Scanner, Token, ScanError, ScanResult};
 
 pub struct Parser {
     scanner: Box<dyn Iterator<Item=Token>>,
-    strings: Arena<String>,
-    functions: Arena<Function>,
+    strings: Arena<String, StaticOpen>,
+    functions: Arena<Function, StaticOpen>,
     previous: Token,
     current: Option<Token>,
     had_error: bool,
@@ -16,8 +16,8 @@ pub struct Parser {
 }
 
 pub struct Parse {
-    pub strings: Arena<String>,
-    pub functions: Arena<Function>,
+    pub strings: Arena<String, StaticOpen>,
+    pub functions: Arena<Function, StaticOpen>,
     pub program: Program,
 }
 

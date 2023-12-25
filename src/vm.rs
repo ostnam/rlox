@@ -1,8 +1,8 @@
 use fnv::FnvHashMap;
 
-use crate::arena::{Arena, Ref};
-use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue, new_class_instance, FnType};
-use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, ClassInstance, Closure};
+use crate::arena::{Arena, Ref, Dynamic, StaticLocked};
+use crate::chunk::{Class, OwnedLoxVal, RelativeStackIdx, CompiledFn, Upvalue, new_class_instance, FnType, ClassInstance};
+use crate::chunk::{Instruction, LoxVal, LoxVal::*, OpCode, Closure};
 use crate::compiler::CompilationResult;
 
 pub struct VM {
@@ -10,12 +10,13 @@ pub struct VM {
     globals: FnvHashMap<String, LoxVal>,
     last_val: LoxVal,
     call_frames: Vec<CallFrame>,
-    heap: Arena<LoxVal>,
-    closures: Arena<Closure>,
-    functions: Arena<CompiledFn>,
-    strings: Arena<String>,
-    classes: Arena<Class>,
-    instances: Arena<ClassInstance>,
+    heap: Arena<LoxVal, Dynamic>,
+    classes: Arena<Class, Dynamic>,
+    instances: Arena<ClassInstance, Dynamic>,
+    closures: Arena<Closure, Dynamic>,
+    strings: Arena<String, Dynamic>,
+    functions: Arena<CompiledFn, StaticLocked>,
+    gc_threshold: usize,
 }
 
 enum LocalVar {
@@ -62,11 +63,12 @@ impl From<CompilationResult> for VM {
                 }
             ],
             heap: Arena::default(),
-            functions: main.closures,
-            closures,
-            strings: main.strings,
-            classes: Arena::default(),
             instances: Arena::default(),
+            functions: main.closures.lock(),
+            closures,
+            strings: main.strings.as_dynamic(),
+            classes: Arena::default(),
+            gc_threshold: 50_000_000,
         }
     }
 }

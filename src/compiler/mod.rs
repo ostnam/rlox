@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::arena::{Ref, Arena};
+use crate::arena::{Ref, Arena, StaticOpen};
 use crate::ast::{Function, Declaration, Expr, Stmt, AsOpcode, Primary, ForInit, VarDecl};
 use crate::chunk::{CompiledFn, FnType, OpCode, Chunk, Instruction, LoxVal};
 use crate::parser::Parse;
@@ -13,8 +13,8 @@ use self::resolver::{StackRef, ScopeId};
 
 pub struct Compiler {
     // Arenas for different objects
-    strings: Arena<String>,
-    closures: Arena<CompiledFn>,
+    strings: Arena<String, StaticOpen>,
+    closures: Arena<CompiledFn, StaticOpen>,
 
     resolver: Resolver,
     current_closure: Ref<CompiledFn>,
@@ -30,8 +30,8 @@ pub struct Compiler {
 
 #[derive(Debug)]
 pub struct CompilationResult {
-    pub strings: Arena<String>,
-    pub closures: Arena<CompiledFn>,
+    pub strings: Arena<String, StaticOpen>,
+    pub closures: Arena<CompiledFn, StaticOpen>,
     pub main: Ref<CompiledFn>,
 }
 

@@ -1,6 +1,6 @@
 use std::{str::Chars, iter::Peekable};
 
-use crate::arena::{Ref, Arena};
+use crate::arena::{Ref, Arena, StaticOpen};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
@@ -114,12 +114,12 @@ pub enum ScanError {
 pub struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     current_line: u64,
-    strings: Arena<String>,
+    strings: Arena<String, StaticOpen>,
 }
 
 pub struct ScanResult {
     pub toks: Vec<Token>,
-    pub strings: Arena<String>,
+    pub strings: Arena<String, StaticOpen>,
 }
 
 impl<'a> Scanner<'a> {
