@@ -247,8 +247,7 @@ impl Compiler {
             Stmt::Return(expr) => {
                 match self.current_closure_type {
                     FnType::Main => self.emit_err("can't use return statement in this context"),
-                    FnType::Method
-                    | FnType::Regular => (),
+                    FnType::Regular => (),
                     FnType::Ctor => unreachable!("BUG: improper pattern matching for Stmt::Return in constructors"),
                 }
                 match expr {
@@ -457,7 +456,6 @@ impl Compiler {
         }
         let new_closure_type = match self.strings.get(f.name).as_str() {
             "init" if is_method => FnType::Ctor,
-            _ if is_method => FnType::Method,
             _ => FnType::Regular,
         };
         let old_fn_type = std::mem::replace(&mut self.current_closure_type, new_closure_type);
@@ -490,8 +488,7 @@ impl Compiler {
 
     fn emit_implicit_return(&mut self) {
         match self.current_closure_type {
-            FnType::Regular
-            | FnType::Method => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
+            FnType::Regular => self.emit_instr(OpCode::Constant(LoxVal::Nil)),
             FnType::Ctor => {
                 if let Some(StackRef::Local(idx)) = self.resolver.resolve(&self.strings, self.this) {
                 self.emit_instr(OpCode::GetLocal(idx));

@@ -762,7 +762,6 @@ impl VM {
                             self.stack.truncate(old_frame.offset);
                             self.push_val(result);
                         }
-                        FnType::Method => todo!(),
                     }
                     continue; // to not increment the IP twice
                 }

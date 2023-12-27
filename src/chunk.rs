@@ -184,6 +184,5 @@ pub type Chunk = Vec<Instruction>;
 pub enum FnType {
     Regular,
     Main,
-    Method,
     Ctor,
 }
