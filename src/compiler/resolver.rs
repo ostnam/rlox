@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::arena::{Arena, Ref, GCFlag, StaticOpen};
+use crate::arena::{Arena, Ref, StaticOpen};
 use crate::chunk::{RelativeStackIdx, Upvalue};
 use crate::refs_eql;
 

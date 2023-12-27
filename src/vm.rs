@@ -802,17 +802,6 @@ impl VM {
         }
     }
 
-    fn peek_mut(&mut self) -> Result<&mut LoxVal, VMError> {
-        match self.stack.last_mut() {
-            Some(LocalVar::OnStack(v)) => Ok(v),
-            Some(LocalVar::OnHeap(heap_ref)) => Ok(self.heap.get_mut(*heap_ref)),
-            None => Err(VMError::StackExhausted {
-                line: 0,
-                details: "tried to peek but stack.len() == 0".to_string(),
-            }),
-        }
-    }
-
     fn apply_native(
         &mut self,
         f: fn(&[LoxVal]) -> Result<LoxVal, VMError>,

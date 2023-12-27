@@ -157,6 +157,11 @@ impl<T, U: GCFlag> Arena<T, U> {
         self.heap.len()
     }
 
+    /// Returns true if no object has been allocated into `self`.
+    pub fn is_empty(&self) -> bool {
+        self.heap.len() == 0
+    }
+
     /// Returns a `Ref` that will point to the next inserted element.
     /// Is not valid and should not be used before that element is inserted,
     /// and a panic could occur otherwise.
