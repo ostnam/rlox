@@ -30,7 +30,7 @@ pub enum Token {
     //  literals
     Identifier { name: Ref<String>, line: u64 },
     NumLit     { value: f64, line: u64 },
-    /// The quotes aren't included in `content`
+    /// Surrounding quotes aren't included in `content`
     StrLit     { content: Ref<String>, line: u64 },
 
     // keywords
@@ -53,6 +53,8 @@ pub enum Token {
 }
 
 impl Token {
+    /// Getter method to access the line out of a `Token`, since Rust isn't
+    /// structurally typed.
     pub fn line(&self) -> u64 {
         match self {
             Token::LParen { line } => *line,
@@ -130,6 +132,58 @@ impl<'a> Scanner<'a> {
             current_line: 1,
             strings: Arena::default()
         }
+    }
+
+    pub fn scan(mut self) -> Result<ScanResult, ScanError> {
+        let mut res = Vec::new();
+        loop {
+            self.skip_whitespace();
+            let c = match self.peek() {
+                Some(c) => c,
+                None => break,
+            };
+            if c.is_ascii_alphabetic() || c == '_' {
+                res.push(self.scan_identifier_or_keyword(c)?);
+                continue;
+            };
+            if c.is_ascii_digit() {
+               res.push(self.scan_num_literal(c)?);
+               continue;
+            };
+            self.advance();
+            match c {
+                '(' => res.push(Token::LParen { line: self.current_line }),
+                ')' => res.push(Token::RParen { line: self.current_line }),
+                '{' => res.push(Token::LBrace { line: self.current_line }),
+                '}' => res.push(Token::RBrace { line: self.current_line }),
+                ';' => res.push(Token::Semicolon { line: self.current_line }),
+                ',' => res.push(Token::Comma { line: self.current_line }),
+                '.' => res.push(Token::Dot { line: self.current_line }),
+                '-' => res.push(Token::Minus { line: self.current_line }),
+                '+' => res.push(Token::Plus { line: self.current_line }),
+                '/' => res.push(Token::Slash { line: self.current_line }),
+                '*' => res.push(Token::Star { line: self.current_line }),
+                '!' if self.matches('=') =>
+                    res.push(Token::BangEql { line: self.current_line }),
+                '!' => res.push(Token::Bang { line: self.current_line }),
+                '=' if self.matches('=') =>
+                    res.push(Token::EqlEql { line: self.current_line }),
+                '=' => res.push(Token::Eql { line: self.current_line }),
+                '<' if self.matches('=') =>
+                    res.push(Token::LessEql { line: self.current_line }),
+                '<' => res.push(Token::Less { line: self.current_line }),
+                '>' if self.matches('=') =>
+                    res.push(Token::GreaterEql { line: self.current_line }),
+                '>' => res.push(Token::Greater { line: self.current_line }),
+                '"' => res.push(self.scan_str_literal()?),
+                _ => return Err(ScanError::UnknownCharacter),
+            };
+        }
+
+        Ok(ScanResult {
+            toks: res,
+            strings: self.strings,
+        })
     }
 
     /// Returns the next `char` from the `src`, or `None` if we `advance`d past
@@ -314,58 +368,6 @@ impl<'a> Scanner<'a> {
                 })
             }
         }
-    }
-
-    pub fn scan(mut self) -> Result<ScanResult, ScanError> {
-        let mut res = Vec::new();
-        loop {
-            self.skip_whitespace();
-            let c = match self.peek() {
-                Some(c) => c,
-                None => break,
-            };
-            if c.is_ascii_alphabetic() || c == '_' {
-                res.push(self.scan_identifier_or_keyword(c)?);
-                continue;
-            };
-            if c.is_ascii_digit() {
-               res.push(self.scan_num_literal(c)?);
-               continue;
-            };
-            self.advance();
-            match c {
-                '(' => res.push(Token::LParen { line: self.current_line }),
-                ')' => res.push(Token::RParen { line: self.current_line }),
-                '{' => res.push(Token::LBrace { line: self.current_line }),
-                '}' => res.push(Token::RBrace { line: self.current_line }),
-                ';' => res.push(Token::Semicolon { line: self.current_line }),
-                ',' => res.push(Token::Comma { line: self.current_line }),
-                '.' => res.push(Token::Dot { line: self.current_line }),
-                '-' => res.push(Token::Minus { line: self.current_line }),
-                '+' => res.push(Token::Plus { line: self.current_line }),
-                '/' => res.push(Token::Slash { line: self.current_line }),
-                '*' => res.push(Token::Star { line: self.current_line }),
-                '!' if self.matches('=') =>
-                    res.push(Token::BangEql { line: self.current_line }),
-                '!' => res.push(Token::Bang { line: self.current_line }),
-                '=' if self.matches('=') =>
-                    res.push(Token::EqlEql { line: self.current_line }),
-                '=' => res.push(Token::Eql { line: self.current_line }),
-                '<' if self.matches('=') =>
-                    res.push(Token::LessEql { line: self.current_line }),
-                '<' => res.push(Token::Less { line: self.current_line }),
-                '>' if self.matches('=') =>
-                    res.push(Token::GreaterEql { line: self.current_line }),
-                '>' => res.push(Token::Greater { line: self.current_line }),
-                '"' => res.push(self.scan_str_literal()?),
-                _ => return Err(ScanError::UnknownCharacter),
-            };
-        }
-
-        Ok(ScanResult {
-            toks: res,
-            strings: self.strings,
-        })
     }
 }
 

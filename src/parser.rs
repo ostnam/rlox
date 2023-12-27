@@ -228,6 +228,7 @@ impl Parser {
         }
     }
 
+    /// Implements the main Pratt parsing loop.
     fn parse_precedence(&mut self, precedence: PrecedenceLvl) -> Option<Expr> {
         self.advance();
         let mut expr = self.prefix_rule()?;

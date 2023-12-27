@@ -42,6 +42,7 @@ struct CallFrame {
     /// Index of the function in the VM functions field.
     closure: Ref<Closure>,
     ip: usize,
+
     /// Index of the stack where the frame starts, == index
     /// where the first arg should be.
     offset: usize,

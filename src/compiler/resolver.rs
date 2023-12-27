@@ -192,6 +192,8 @@ impl Resolver {
         self.scopes.len()
     }
 
+    /// Returns a ScopeId, that should be passed to `end_scope` to ensure
+    /// that scopes are closed once, in the same order as they are opened.
     pub fn begin_scope(&mut self) -> ScopeId {
         let id = self.gen_scope_id();
         self.scopes.push(Scope {
@@ -203,6 +205,9 @@ impl Resolver {
         id
     }
 
+    /// Ends the current block scope, and returns a `Result` holding an `Error`
+    /// or the number of local variables declared in the scope, that should be
+    /// popped.
     pub fn end_scope(&mut self, expected: ScopeId) -> Result<usize, Error> {
         match self.scopes.pop() {
             Some(Scope { kind: ScopeKind::Function(_), .. }) => Err(Error::WrongScopeKind),
@@ -215,6 +220,8 @@ impl Resolver {
         }
     }
 
+    /// Creates a new function scope, in which every argument passed in `args`
+    /// is declared as a local variable. Like `begin_scope`, returns a ScopeId.
     pub fn begin_fn_scope(
         &mut self,
         strings: &Arena<String, StaticOpen>,
@@ -234,6 +241,8 @@ impl Resolver {
         Ok(id)
     }
 
+    /// Ends a function scope, and returns the value closed over by that function, or
+    /// one of its inner functions.
     pub fn end_fn_scope(&mut self, expected: ScopeId) -> Result<Vec<Upvalue>, Error> {
         match self.scopes.pop() {
             Some(Scope { kind: ScopeKind::Block, .. }) => Err(Error::WrongScopeKind),
@@ -255,6 +264,8 @@ impl Resolver {
         self.locals[self.scopes.last().unwrap().start..].iter()
     }
 
+    /// Returns whether the scope at index `scope_idx` is part of the
+    /// same function scope as the current top-level scope.
     fn same_fn_scope(&self, scope_idx: usize) -> bool {
         for (idx, scope) in self.scopes.iter().enumerate().rev() {
             if scope_idx == idx {
