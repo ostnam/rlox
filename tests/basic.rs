@@ -302,7 +302,6 @@ fn test_if_stmt() {
         "#),
         Ok(OwnedLoxVal::Num(3.0)),
     );
-    /*
     assert_eq!(
         common::run_program(r#"
             var x = 1;
@@ -313,7 +312,6 @@ fn test_if_stmt() {
         "#),
         Ok(OwnedLoxVal::Num(1.0)),
     );
-    */
 }
 
 #[test]
