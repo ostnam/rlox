@@ -16,9 +16,17 @@ pub struct VM {
     closures: Arena<Closure, Dynamic>,
     strings: Arena<String, Dynamic>,
     functions: Arena<CompiledFn, StaticLocked>,
+
+    /// The first GC cycle will be triggered when the estimated size
+    /// of objects exceeds this value.
     gc_threshold: usize,
+
+    /// Estimate of the average size of an object (string, class, instance or
+    /// closure), in bytes. Used to trigger GC.
+    avg_object_size: usize,
 }
 
+#[derive(Clone)]
 enum LocalVar {
     OnStack(LoxVal),
     OnHeap(Ref<LoxVal>),
@@ -69,6 +77,7 @@ impl From<CompilationResult> for VM {
             strings: main.strings.as_dynamic(),
             classes: Arena::default(),
             gc_threshold: 50_000_000,
+            avg_object_size: 500,
         }
     }
 }
@@ -270,6 +279,7 @@ impl VM {
                                 offset: self.stack.len() - n_args as usize,
                                 kind: FnType::Regular,
                             });
+                            self.run_gc_if_needed();
                         }
                         LoxVal::NativeFn(f) => self.apply_native(f, n_args)?,
                         LoxVal::Class(class_ref) => {
@@ -818,6 +828,317 @@ impl VM {
         self.stack.truncate(frame_start);
         self.push_val(result);
         Ok(())
+    }
+
+    /// Takes a `LoxVal` and `Arena`s, and moves the value to one of the new `Arena`s.
+    /// Calling `move_val` ensures that the value is still valid after GC is finished.
+    fn move_val(
+        &mut self,
+        val: LoxVal,
+        new_strings: &mut Arena<String, Dynamic>,
+        new_classes: &mut Arena<Class, Dynamic>,
+        new_instances: &mut Arena<ClassInstance, Dynamic>,
+        new_closures: &mut Arena<Closure, Dynamic>,
+        new_heap: &mut Arena<LoxVal, Dynamic>,
+    ) -> LoxVal {
+        match val {
+            Str(ptr) => {
+                let (new_ref, _) = self.strings.move_ref(new_strings, ptr);
+                LoxVal::Str(new_ref)
+            },
+            LoxVal::Closure(ptr) => LoxVal::Closure(self.move_closure(
+                ptr,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            )),
+            LoxVal::Class(ptr) => LoxVal::Class(self.move_class(
+                ptr,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            )),
+
+            Instance(ptr) => LoxVal::Instance(self.move_instance(
+                ptr,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            )),
+            v@Bool(_)
+            | v@Nil
+            | v@Num(_)
+            | v@NativeFn(_) => v,
+        }
+    }
+
+    /// Move a `ClassInstance` to `new_heap` and moves the value of its fields
+    /// so that they are still valid after the arena is dropped.
+    fn move_instance(
+        &mut self,
+        instance: Ref<ClassInstance>,
+        new_strings: &mut Arena<String, Dynamic>,
+        new_classes: &mut Arena<Class, Dynamic>,
+        new_instances: &mut Arena<ClassInstance, Dynamic>,
+        new_closures: &mut Arena<Closure, Dynamic>,
+        new_heap: &mut Arena<LoxVal, Dynamic>,
+    ) -> Ref<ClassInstance> {
+        let (new_ref, already_moved) = self.instances.move_ref(new_instances, instance);
+        if already_moved {
+            return new_ref;
+        }
+        let instance = new_instances.get(new_ref);
+        let new_class = self.move_class(
+            instance.class,
+            new_strings,
+            new_classes,
+            new_instances,
+            new_closures,
+            new_heap
+        );
+
+        let mut new_fields = std::mem::take(&mut new_instances.get_mut(new_ref).fields);
+        for (_, field) in new_fields.iter_mut() {
+            let new_val = self.move_val(
+                field.clone(),
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            );
+            *field = new_val;
+        }
+        let inst = new_instances.get_mut(new_ref);
+        inst.class = new_class;
+        inst.fields = new_fields;
+
+        new_ref
+    }
+
+    /// Move a `Class` to `new_heap` so that it is still valid after the arena
+    /// is dropped.
+    fn move_class(
+        &mut self,
+        class: Ref<Class>,
+        new_strings: &mut Arena<String, Dynamic>,
+        new_classes: &mut Arena<Class, Dynamic>,
+        new_instances: &mut Arena<ClassInstance, Dynamic>,
+        new_closures: &mut Arena<Closure, Dynamic>,
+        new_heap: &mut Arena<LoxVal, Dynamic>,
+    ) -> Ref<Class> {
+        let (new_ref, already_moved) = self.classes.move_ref(new_classes, class);
+        if already_moved {
+            return new_ref;
+        }
+        let cls = new_classes.get(new_ref);
+        let (new_name, _) = self.strings.move_ref(new_strings, cls.name);
+
+        let new_sup = cls.sup.map(|sup|
+            self.move_class(
+                sup,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            )
+        );
+
+        let mut new_methods = std::mem::take(&mut new_classes.get_mut(new_ref).methods);
+        for (_, method) in new_methods.iter_mut() {
+            *method = self.move_closure(
+                *method,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap,
+            );
+        }
+        let cls = new_classes.get_mut(new_ref);
+        cls.name = new_name;
+        cls.methods = new_methods;
+        cls.sup = new_sup;
+
+        new_ref
+    }
+
+    /// Move a `Closure` to `new_heap` so that it is still valid after the arena
+    /// is dropped.
+    fn move_closure(
+        &mut self,
+        closure: Ref<Closure>,
+        new_strings: &mut Arena<String, Dynamic>,
+        new_classes: &mut Arena<Class, Dynamic>,
+        new_instances: &mut Arena<ClassInstance, Dynamic>,
+        new_closures: &mut Arena<Closure, Dynamic>,
+        new_heap: &mut Arena<LoxVal, Dynamic>,
+    ) -> Ref<Closure> {
+        let (new_ref, already_moved) = self.closures.move_ref(new_closures, closure);
+        if already_moved {
+            return new_ref;
+        }
+
+        let closure = new_closures.get(new_ref);
+        let new_this = closure.this.map(|ptr|
+            self.move_instance(
+                ptr,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap
+            )
+        );
+
+        let closure = new_closures.get(new_ref);
+        let new_sup = closure.sup.map(|ptr|
+            self.move_class(
+                ptr,
+                new_strings,
+                new_classes,
+                new_instances,
+                new_closures,
+                new_heap
+            )
+        );
+
+        let mut new_upvalues = std::mem::take(&mut new_closures.get_mut(new_ref).upvalues);
+        for upval in new_upvalues.iter_mut() {
+            let (new_upval, already_moved) = self.heap.move_ref(new_heap, *upval);
+            *upval = new_upval;
+            if !already_moved {
+                let mut upval_val = new_heap.get(new_upval).clone();
+                upval_val = self.move_val(
+                    upval_val,
+                    new_strings,
+                    new_classes,
+                    new_instances,
+                    new_closures,
+                    new_heap,
+                );
+                *new_heap.get_mut(new_upval) = upval_val;
+            } 
+        }
+
+        let closure = new_closures.get_mut(new_ref);
+        closure.this = new_this;
+        closure.sup = new_sup;
+        closure.upvalues = new_upvalues;
+
+        new_ref
+    }
+
+
+    fn run_gc(&mut self) {
+        // Create new arenas
+        let mut new_strings = self.strings.next_heap();
+        let mut new_classes = self.classes.next_heap();
+        let mut new_instances = self.instances.next_heap();
+        let mut new_closures = self.closures.next_heap();
+        let mut new_heap = self.heap.next_heap();
+        let mut new_stack = self.stack.clone();
+
+        // Move values on the stack.
+        for val in new_stack.iter_mut() {
+            match val {
+                LocalVar::OnStack(val) => {
+                    let new_val = self.move_val(
+                        val.clone(),
+                        &mut new_strings,
+                        &mut new_classes,
+                        &mut new_instances,
+                        &mut new_closures,
+                        &mut new_heap
+                    );
+                    *val = new_val;
+                }
+                LocalVar::OnHeap(heap_ref) => {
+                    let (new_heap_ref, already_moved) = self.heap.move_ref(&mut new_heap, *heap_ref);
+                    *heap_ref = new_heap_ref;
+                    if !already_moved {
+                        let mut val = new_heap.get(new_heap_ref).clone();
+                        val = self.move_val(
+                            val,
+                            &mut new_strings,
+                            &mut new_classes,
+                            &mut new_instances,
+                            &mut new_closures,
+                            &mut new_heap,
+                        );
+                        *new_heap.get_mut(new_heap_ref) = val;
+                    }
+                }
+            }
+        }
+
+        // Move global variables
+        let mut temp = std::mem::take(&mut self.globals);
+        for (_, val) in temp.iter_mut() {
+            *val = self.move_val(
+                val.clone(),
+                &mut new_strings,
+                &mut new_classes,
+                &mut new_instances,
+                &mut new_closures,
+                &mut new_heap,
+            );
+        }
+        std::mem::swap(&mut self.globals, &mut temp);
+
+        // Move closures on the callstack
+        let mut temp = std::mem::take(&mut self.call_frames);
+        for frame in temp.iter_mut() {
+            frame.closure = self.move_closure(
+                frame.closure,
+                &mut new_strings,
+                &mut new_classes,
+                &mut new_instances,
+                &mut new_closures,
+                &mut new_heap,
+            );
+        }
+        std::mem::swap(&mut self.call_frames, &mut temp);
+
+        // Set the new arena
+        self.strings = new_strings;
+        self.classes = new_classes;
+        self.instances = new_instances;
+        self.closures = new_closures;
+        self.heap = new_heap;
+        self.stack = new_stack;
+
+        // update gc_threshold
+        self.gc_threshold = self.heap_size() * 2;
+    }
+
+    /// Checks whether a garbage collection is needed, and triggers it
+    /// if so.
+    /// Can only be safely called at the beginning of a LoxVal function call,
+    /// just after the new callframe has been pushed.
+    fn run_gc_if_needed(&mut self) {
+        if self.heap_size() > self.gc_threshold {
+            self.run_gc();
+        }
+    }
+
+    /// Returns an estimate of the number of the cumulative size of every
+    /// heap-allocated value.
+    fn heap_size(&self) -> usize {
+        ( self.strings.len()
+        + self.classes.len()
+        + self.instances.len()
+        + self.closures.len()
+        + self.heap.len()
+        + self.globals.len()
+        ) * self.avg_object_size
     }
 }
 
