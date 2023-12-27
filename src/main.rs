@@ -31,7 +31,7 @@ fn repl() {
             panic!("Error reading input line: {}", e);
         }
         match run::run_program(&buffer) {
-            Ok(_) => println!("TODO: print the value evaluated"),
+            Ok(v) => println!("{v:?}"),
             Err(e) => println!("{e:?}"),
         }
     }
